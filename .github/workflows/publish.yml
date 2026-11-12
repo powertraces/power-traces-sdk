@@ -1,0 +1,112 @@
+name: Publish NuGet packages
+
+# Manual only — never runs on push/PR. Publishing to nuget.org isn't reversible, so nothing here
+# happens without someone explicitly clicking "Run workflow" (Actions tab -> Publish NuGet
+# packages -> Run workflow).
+"on":
+  workflow_dispatch:
+    inputs:
+      version:
+        description: >-
+          Version to publish (e.g. 2.1.0). Leave empty to publish whatever version is
+          already set in src/Directory.Build.props.
+        required: false
+        type: string
+      dry_run:
+        description: "Pack and upload as a workflow artifact, but don't push to nuget.org."
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # Optional extra gate: create a "release" environment under repo Settings -> Environments and
+    # add required reviewers there to force manual approval before every publish. Harmless to leave
+    # as-is if you don't set that up — GitHub just creates an unprotected environment on first run.
+    # If you do configure nuget.org's Trusted Publishing policy with an Environment value (below),
+    # it must match this name.
+    environment: release
+    # Declaring ANY permission here resets every unlisted scope to "none" (GitHub Actions doesn't
+    # merge this with the repo/org default) — contents: read must be listed explicitly or
+    # actions/checkout gets a token with no read access at all, which on a private repo surfaces
+    # as "Repository not found" rather than a permissions error.
+    permissions:
+      contents: read
+      id-token: write # required to request the GitHub OIDC token Trusted Publishing exchanges for a NuGet API key
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      # The dashboard's SPA (src/PowerTraces.Dashboard/wwwroot) is committed as a built artifact so a
+      # plain `dotnet build` doesn't need Node — but a publish should always embed a freshly built
+      # copy of what's actually in ClientWeb/src, not whatever happened to be committed last.
+      - name: Build dashboard frontend
+        working-directory: src/PowerTraces.Dashboard/ClientWeb
+        run: |
+          yarn install --immutable
+          yarn build
+
+      - name: Set package version
+        if: ${{ inputs.version != '' }}
+        run: |
+          sed -i "s#<Version>[^<]*</Version>#<Version>${{ inputs.version }}</Version>#" src/Directory.Build.props
+          grep '<Version>' src/Directory.Build.props
+
+      - name: Restore
+        run: dotnet restore PowerTraces.sln
+
+      - name: Build (Release)
+        run: dotnet build PowerTraces.sln -c Release --no-restore
+
+      - name: Pack
+        run: dotnet pack PowerTraces.sln -c Release --no-build --output nupkgs
+
+      - name: List packed packages
+        run: ls -la nupkgs/
+
+      - name: Upload packages as a workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nupkgs
+          path: |
+            nupkgs/*.nupkg
+            nupkgs/*.snupkg
+          if-no-files-found: error
+
+      # Trusted Publishing (OIDC) — no long-lived NuGet API key stored anywhere in this repo. One
+      # short-lived key (valid ~1 hour, single use) is issued per run instead. Requires a policy
+      # configured on nuget.org FIRST: sign in -> your username -> Trusted Publishing -> add a
+      # policy with Repository Owner/Repository set to this repo and Workflow File set to
+      # "publish.yml" (filename only, not the full path). A freshly created policy on a private
+      # repo starts in a 7-day "pending full activation" window that a successful publish makes
+      # permanent — see https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing.
+      # `NUGET_USER` is your nuget.org username (profile name, NOT your email) — store it as a
+      # repository secret even though it isn't sensitive, so it isn't hardcoded here.
+      - name: NuGet login (OIDC -> short-lived API key)
+        if: ${{ inputs.dry_run != true }}
+        uses: NuGet/login@v1
+        id: nuget_login
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      - name: Push to NuGet.org
+        if: ${{ inputs.dry_run != true }}
+        run: |
+          dotnet nuget push "nupkgs/*.nupkg" \
+            --api-key "${{ steps.nuget_login.outputs.NUGET_API_KEY }}" \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate

@@ -1,0 +1,44 @@
+# .NET build output
+bin/
+obj/
+*.user
+*.userosscache
+*.suo
+.vs/
+TestResults/
+
+# JetBrains Rider
+.idea/
+
+# Node / Yarn (ClientWeb, at any nesting depth) — node_modules and Yarn's local cache/state
+# are always regenerable from package.json + yarn.lock, so they don't belong in source
+# control. .pnp.cjs / .pnp.loader.mjs / .yarn/releases *do* need to stay tracked — Yarn PnP
+# mode uses them instead of node_modules to resolve packages.
+**/node_modules/
+**/.yarn/cache/
+**/.yarn/unplugged/
+**/.yarn/install-state.gz
+**/.yarn/build-state.yml
+.pnp.cjs.bak
+
+# Vite
+.vite/
+*.tsbuildinfo
+
+# NOTE: src/PowerTraces.Dashboard/wwwroot/ (the built dashboard SPA) is intentionally
+# NOT ignored — it's embedded into the assembly at build time, and `dotnet build`
+# doesn't rebuild it by default (opt in via /p:BuildFrontend=true), so it needs to be
+# checked in for a plain `dotnet build`/`dotnet pack` to produce a working dashboard.
+
+# dotnet pack output (regenerate with `dotnet pack PowerTraces.sln -c Release`)
+nupkgs/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,29 @@
+<Project>
+
+  <!-- Shared by every package under src/ (not samples/ — the sample app isn't published). -->
+  <PropertyGroup>
+    <Version>3.0.0</Version>
+    <Authors>PowerTraces contributors</Authors>
+    <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <!-- Triple-slash comments are written for IntelliSense, not as a mandate to document every
+         public member — don't fail the build over the ones that are self-explanatory. -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <PackageOutputPath>$(MSBuildThisFileDirectory)..\nupkgs</PackageOutputPath>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+    <PackageIcon>icon.png</PackageIcon>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+  <!-- Each project's own README.md (next to its .csproj) becomes the package's README, shown on
+       nuget.org and in Visual Studio's package manager. -->
+  <ItemGroup>
+
+    <None Include="$(MSBuildThisFileDirectory)LICENSE.txt" Pack="true" PackagePath="\"
+      Visible="false" />
+    <None Include="$(MSBuildThisFileDirectory)icon.png" Pack="true" PackagePath="\" Visible="false" />
+    <None Include="README.md" Pack="true" PackagePath="\" Condition="Exists('README.md')" />
+  </ItemGroup>
+</Project>

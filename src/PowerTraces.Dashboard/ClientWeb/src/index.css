@@ -1,0 +1,238 @@
+@import "tailwindcss";
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+
+/* Design tokens. Every component styles itself through these (never raw hex), so the light and
+   dark themes are just two assignments of the same roles. Dark is the default; the OS preference
+   picks light unless the viewer chose a theme explicitly (data-theme on <html>, see lib/theme.ts),
+   which wins both ways. */
+:root {
+  color-scheme: dark;
+
+  --bg: #0b0d12;
+  --surface: #12151c;
+  --surface-raised: #181c25;
+  --border: #242a36;
+  --border-strong: #323a4a;
+  --text: #e8eaf0;
+  --text-muted: #a0a8b8;
+  --text-dim: #6b7486;
+
+  --accent: #8b93ff;
+  --accent-strong: #6d75f5;
+  --accent-contrast: #0b0d12;
+
+  /* State colors — each always ships with an icon or label, never color alone. */
+  --error: #f06a6a;
+  --warn: #f5a524;
+  --success: #3fb96b;
+  --info: #5ea2f5;
+  /* Extra categorical hues for span kinds in the trace waterfall. */
+  --violet: #a78bfa;
+  --rose: #f472b6;
+
+  /* Per-service swatches on the trace page (assigned in order of first appearance). */
+  --svc-1: #8b93ff;
+  --svc-2: #4cc3d9;
+  --svc-3: #e8a33d;
+  --svc-4: #c58af9;
+  --svc-5: #6fcf8b;
+  --svc-6: #f07fb0;
+
+  /* Chart roles (validated pair: blue series + red critical, both modes). */
+  --series-1: #3987e5;
+  --series-critical: #e66767;
+  --grid: #222733;
+  --axis: #394152;
+
+  /* Interaction washes — replace hardcoded white/black overlays so both themes work. */
+  --hover: rgba(255, 255, 255, 0.035);
+  --hover-strong: rgba(255, 255, 255, 0.07);
+  --input-bg: #0e1117;
+  --subtle: rgba(255, 255, 255, 0.025);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --bg: #f5f6f9;
+    --surface: #ffffff;
+    --surface-raised: #fafbfc;
+    --border: #e3e6ed;
+    --border-strong: #cfd4de;
+    --text: #151923;
+    --text-muted: #4f5869;
+    --text-dim: #7c8596;
+    --accent: #4f55e0;
+    --accent-strong: #3f45cc;
+    --accent-contrast: #ffffff;
+    --error: #c93636;
+    --warn: #b26a00;
+    --success: #1f8a4c;
+    --info: #2463d6;
+    --violet: #7340d8;
+    --rose: #c42f78;
+    --svc-1: #4f55e0;
+    --svc-2: #0f8aa3;
+    --svc-3: #b26a00;
+    --svc-4: #8a4fd6;
+    --svc-5: #1f8a4c;
+    --svc-6: #c42f78;
+    --series-1: #2a78d6;
+    --series-critical: #d03b3b;
+    --grid: #eceef3;
+    --axis: #cfd4de;
+    --hover: rgba(15, 23, 42, 0.035);
+    --hover-strong: rgba(15, 23, 42, 0.07);
+    --input-bg: #ffffff;
+    --subtle: rgba(15, 23, 42, 0.025);
+    --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+    --shadow-md: 0 8px 24px rgba(15, 23, 42, 0.1);
+  }
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f5f6f9;
+  --surface: #ffffff;
+  --surface-raised: #fafbfc;
+  --border: #e3e6ed;
+  --border-strong: #cfd4de;
+  --text: #151923;
+  --text-muted: #4f5869;
+  --text-dim: #7c8596;
+  --accent: #4f55e0;
+  --accent-strong: #3f45cc;
+  --accent-contrast: #ffffff;
+  --error: #c93636;
+  --warn: #b26a00;
+  --success: #1f8a4c;
+  --info: #2463d6;
+  --violet: #7340d8;
+  --rose: #c42f78;
+  --svc-1: #4f55e0;
+  --svc-2: #0f8aa3;
+  --svc-3: #b26a00;
+  --svc-4: #8a4fd6;
+  --svc-5: #1f8a4c;
+  --svc-6: #c42f78;
+  --series-1: #2a78d6;
+  --series-critical: #d03b3b;
+  --grid: #eceef3;
+  --axis: #cfd4de;
+  --hover: rgba(15, 23, 42, 0.035);
+  --hover-strong: rgba(15, 23, 42, 0.07);
+  --input-bg: #ffffff;
+  --subtle: rgba(15, 23, 42, 0.025);
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 8px 24px rgba(15, 23, 42, 0.1);
+}
+
+* {
+  border-color: var(--border);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Inter", system-ui, sans-serif;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-mono {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 6px;
+  border: 2px solid var(--bg);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
+}
+
+/* Shared control styling — inputs/selects across every page look the same. In the components
+   layer so a utility on the element (e.g. pl-9 to clear a search icon) still overrides it. */
+@layer components {
+  .control {
+    height: 34px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--input-bg);
+    color: var(--text);
+    padding: 0 10px;
+    font-size: 13px;
+    outline: none;
+    transition: border-color 120ms, box-shadow 120ms;
+  }
+  .control::placeholder {
+    color: var(--text-dim);
+  }
+  .control:hover {
+    border-color: var(--border-strong);
+  }
+  .control:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+  }
+}
+
+/* Minimal highlight.js theme — mapped to the dashboard's own palette (see CodeBlock.tsx) rather
+   than an imported third-party stylesheet, so formatted JSON/SQL/XML matches everything else. */
+.hljs {
+  color: var(--text);
+  background: transparent;
+}
+.hljs-keyword,
+.hljs-built_in,
+.hljs-name,
+.hljs-tag {
+  color: var(--info);
+}
+.hljs-string,
+.hljs-attr,
+.hljs-symbol {
+  color: var(--success);
+}
+.hljs-number,
+.hljs-literal,
+.hljs-type {
+  color: var(--violet);
+}
+.hljs-comment {
+  color: var(--text-dim);
+  font-style: italic;
+}
+.hljs-attribute {
+  color: var(--warn);
+}
+.hljs-punctuation,
+.hljs-operator {
+  color: var(--text-muted);
+}

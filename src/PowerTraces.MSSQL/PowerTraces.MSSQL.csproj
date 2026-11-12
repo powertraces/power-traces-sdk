@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <PackageId>PowerTraces.MSSQL</PackageId>
+    <Description>SQL Server provider for PowerTraces — exports traces/logs
+      straight to SQL Server via connection string, no EF Core, tables created automatically.</Description>
+    <PackageTags>opentelemetry;telemetry;tracing;logging;sqlserver;mssql;observability</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="7.0.2" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.11" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PowerTraces\PowerTraces.csproj" />
+  </ItemGroup>
+
+</Project>

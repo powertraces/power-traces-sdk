@@ -1,0 +1,67 @@
+PowerTraces Free License
+
+Copyright (c) PowerTraces. All rights reserved.
+
+This license covers the PowerTraces .NET library (the packages PowerTraces,
+PowerTraces.MSSQL, PowerTraces.PostgreSQL, PowerTraces.MySQL, PowerTraces.MongoDb,
+PowerTraces.Sqlite and PowerTraces.Dashboard), version 2.0.0 and later, in source
+and compiled form (the "Software").
+
+1. What you may do
+
+   You may, free of charge, for any purpose, including commercial purposes:
+
+   a. install, run and use the Software in any number of applications,
+      environments and organizations;
+   b. distribute the Software, unmodified, as part of your own applications,
+      including applications you sell or offer as a service;
+   c. configure the Software through its public options and settings, and
+      extend it by implementing its public interfaces (for example
+      IStorageWriter and IDashboardStore) in your own separate code;
+   d. read the source code to understand, debug and evaluate it.
+
+2. What you may not do
+
+   You may not:
+
+   a. modify, adapt, translate or create derivative works of the Software, or
+      distribute any of them;
+   b. distribute the Software on its own, outside your own application, or
+      publish it under another name or to any package registry;
+   c. remove or change any copyright, license or attribution notice in the
+      Software;
+   d. use the PowerTraces name or logo to suggest that PowerTraces endorses
+      you or your product.
+
+   You may fork the public repository on the site where it is published only
+   to propose changes back to PowerTraces through that site. Any change you
+   propose is licensed to PowerTraces under these terms and may be used,
+   changed and published by PowerTraces without restriction.
+
+3. Earlier versions
+
+   Versions 2.0.0 to 2.0.4 were published with a license meant for the
+   PowerTraces SDK. This license replaces it for those versions. Versions
+   before 2.0.0 were published under the MIT License and remain available
+   under it.
+
+4. Ending this license
+
+   If you break these terms, your rights under this license end
+   automatically. They are restored if you stop the breach within 30 days of
+   becoming aware of it, unless PowerTraces has already ended them in writing
+   for a repeated breach.
+
+5. No warranty
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+   POWERTRACES BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
+   AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+   CONNECTION WITH THE SOFTWARE OR ITS USE.
+
+6. Rights the law gives you
+
+   Nothing in this license limits any right you have under applicable law
+   that cannot be limited by contract.

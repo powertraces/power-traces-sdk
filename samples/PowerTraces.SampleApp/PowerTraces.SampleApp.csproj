@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!-- Lets RecordExceptionWithSource show source snapshots wherever the app runs, even where the
+       .cs files aren't deployed: the sources travel inside the PDB. -->
+  <PropertyGroup>
+    <EmbedAllSources>true</EmbedAllSources>
+  </PropertyGroup>
+
+  <!-- A real consumer only needs the ONE provider package for whatever database they use — it
+       pulls in the base PowerTraces package transitively. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\PowerTraces.MSSQL\PowerTraces.MSSQL.csproj" />
+    <ProjectReference Include="..\..\src\PowerTraces.Dashboard\PowerTraces.Dashboard.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.18.0" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.18.0" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.18.0" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.SqlClient" Version="1.18.0" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Sample/demo app — not published, so `dotnet pack` on the solution should skip it silently
+         rather than warn. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+</Project>

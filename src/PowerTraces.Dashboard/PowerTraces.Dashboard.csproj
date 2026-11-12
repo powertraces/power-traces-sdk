@@ -1,0 +1,53 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>PowerTraces.Dashboard</RootNamespace>
+    <GenerateEmbeddedFilesManifest>true</GenerateEmbeddedFilesManifest>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <PackageId>PowerTraces.Dashboard</PackageId>
+    <Description>Traces/logs viewer UI + query API for the PowerTraces exporter. Mount with app.MapPowerTracesDashboard(connectionString) — no DI registration needed, the UI is embedded in the package.</Description>
+    <PackageTags>opentelemetry;telemetry;tracing;logging;observability;dashboard;sqlserver;postgresql;mongodb;mysql</PackageTags>
+  </PropertyGroup>
+
+  <!-- Not a Web SDK project (this is a plain library other apps reference), so ASP.NET Core types
+       come in via FrameworkReference the same way Razor Class Libraries pull it in. -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <!-- Deliberately the ONLY project reference: the dashboard never talks to a specific database
+       itself. It resolves an IDashboardStore (defined in the base package) from DI, keyed by
+       PowerTracesDatabaseProvider — each provider package (PowerTraces.MSSQL,
+       .PostgreSQL, .MongoDb, .MySQL) registers its own implementation under that key via its own
+       AddPowerTracesXxxDashboard(...) extension. Whichever provider package(s) the host app actually
+       wants are its own choice to reference, not this one's. -->
+  <ItemGroup>
+    <ProjectReference Include="..\PowerTraces\PowerTraces.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11" />
+  </ItemGroup>
+
+  <!-- The built SPA (ClientWeb) is embedded into the assembly so the dashboard works from a bare
+       PackageReference, with no wwwroot the host needs to publish separately. -->
+  <ItemGroup>
+    <EmbeddedResource Include="wwwroot\**" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.FileProviders.Embedded" Version="10.0.11" />
+  </ItemGroup>
+
+  <!-- Build the Vite frontend before Build/Pack when requested — off by default so a plain
+       `dotnet build` doesn't require Node/Yarn to be installed. -->
+  <Target Name="BuildFrontend" BeforeTargets="BeforeBuild" Condition="'$(BuildFrontend)' == 'true'">
+    <Exec Command="yarn install" WorkingDirectory="ClientWeb" />
+    <Exec Command="yarn build" WorkingDirectory="ClientWeb" />
+  </Target>
+
+</Project>
