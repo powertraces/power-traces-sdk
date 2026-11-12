@@ -17,6 +17,21 @@ name: Publish NuGet packages
         required: false
         type: boolean
         default: false
+      unlist_previous:
+        description: >-
+          After publishing, unlist every earlier version of the packages just published, so only
+          the new version shows on nuget.org. Unlisted versions still restore for anyone who
+          pins them. With dry_run, only lists what would be unlisted.
+        required: false
+        type: boolean
+        default: false
+      extra_package_ids:
+        description: >-
+          Other package IDs to unlist completely, comma-separated (e.g. Acumency,Acumency.MSSQL,
+          Acumency.Dashboard). Runs only with unlist_previous.
+        required: false
+        type: string
+        default: ""
 
 jobs:
   publish:
@@ -110,3 +125,73 @@ jobs:
             --api-key "${{ steps.nuget_login.outputs.NUGET_API_KEY }}" \
             --source https://api.nuget.org/v3/index.json \
             --skip-duplicate
+
+      - name: Find versions to unlist
+        if: ${{ inputs.unlist_previous }}
+        env:
+          EXTRA_IDS: ${{ inputs.extra_package_ids }}
+        run: |
+          python3 - <<'EOF' > unlist.txt
+          import glob, gzip, json, os, re, urllib.error, urllib.request
+
+          def get(url):
+              request = urllib.request.Request(url, headers={"Accept-Encoding": "gzip"})
+              with urllib.request.urlopen(request) as response:
+                  body = response.read()
+                  return json.loads(gzip.decompress(body) if response.headers.get("Content-Encoding") == "gzip" else body)
+
+          def listed(package_id):
+              try:
+                  index = get(f"https://api.nuget.org/v3/registration5-gz-semver2/{package_id.lower()}/index.json")
+              except urllib.error.HTTPError:
+                  return []
+              versions = []
+              for page in index["items"]:
+                  for item in page.get("items") or get(page["@id"])["items"]:
+                      entry = item["catalogEntry"]
+                      if entry.get("listed", True):
+                          versions.append(entry["version"])
+              return versions
+
+          current = re.search(r"<Version>([^<]+)</Version>", open("src/Directory.Build.props").read()).group(1)
+          published = sorted({re.sub(rf"\.{re.escape(current)}\.nupkg$", "", os.path.basename(p)) for p in glob.glob(f"nupkgs/*.{current}.nupkg")})
+          extra = [i.strip() for i in os.environ.get("EXTRA_IDS", "").split(",") if i.strip()]
+          for package_id in published:
+              for version in listed(package_id):
+                  if version.lower() != current.lower():
+                      print(package_id, version)
+          for package_id in extra:
+              for version in listed(package_id):
+                  print(package_id, version)
+          EOF
+          {
+            echo "### Versions to unlist"
+            if [ -s unlist.txt ]; then echo '```'; cat unlist.txt; echo '```'; else echo "Nothing listed to unlist."; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          cat unlist.txt
+
+      # A fresh short-lived key for unlisting. If nuget.org doesn't let Trusted Publishing keys
+      # unlist (or the extra packages aren't covered by this repo's policy), store a nuget.org API
+      # key with the "Unlist package" scope as the NUGET_UNLIST_API_KEY secret; it's used instead.
+      - name: NuGet login for unlisting (OIDC -> short-lived API key)
+        if: ${{ inputs.unlist_previous && inputs.dry_run != true }}
+        uses: NuGet/login@v1
+        id: nuget_unlist_login
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      - name: Unlist previous versions
+        if: ${{ inputs.unlist_previous && inputs.dry_run != true }}
+        env:
+          API_KEY: ${{ secrets.NUGET_UNLIST_API_KEY || steps.nuget_unlist_login.outputs.NUGET_API_KEY }}
+        run: |
+          failed=0
+          while read -r id version; do
+            [ -z "$id" ] && continue
+            echo "Unlisting $id $version"
+            dotnet nuget delete "$id" "$version" --source https://api.nuget.org/v3/index.json --api-key "$API_KEY" --non-interactive || failed=$((failed + 1))
+          done < unlist.txt
+          if [ "$failed" -gt 0 ]; then
+            echo "::error::$failed version(s) couldn't be unlisted. Add a NUGET_UNLIST_API_KEY secret: a nuget.org API key with the Unlist package scope for these packages."
+            exit 1
+          fi
