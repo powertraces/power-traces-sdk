@@ -287,13 +287,15 @@ Authentication is [Trusted Publishing](https://learn.microsoft.com/en-us/nuget/n
 A freshly created policy on a private repo starts in a 7-day "pending full activation" window —
 the first successful publish makes it permanent.
 
-To hide older releases, run the workflow with `unlist_previous: true`. After pushing, it unlists
-every earlier version of the packages it just published, so only the new version shows on
-nuget.org; anyone who pins an older version can still restore it. `extra_package_ids` takes other
-package IDs to unlist completely, such as the old `Acumency.*` packages. With `dry_run: true` it
-only lists what it would unlist, in the run summary. Unlisting uses a fresh Trusted Publishing key;
-if nuget.org refuses it, or a package isn't covered by this repo's policy, add a
-`NUGET_UNLIST_API_KEY` secret holding a nuget.org API key with the **Unlist package** scope.
+To hide older releases, run the workflow with `action: unlist`. It builds and pushes nothing: it
+unlists every listed version of this repo's packages except the newest, so only that one shows on
+nuget.org; anyone who pins an older version can still restore it. `keep_version` keeps a specific
+version instead (`none` unlists them all), and `package_ids` picks other packages, such as the old
+`Acumency.*` ones. With `dry_run: true` it only lists what it would unlist, in the run summary.
+
+Unlisting uses the same Trusted Publishing policy, which needs the **Unlist or relist package
+versions** scope. Packages owned by another nuget.org account aren't covered by it: add an API key
+from that account, with the **Unlist package** scope, as the `NUGET_UNLIST_API_KEY` secret.
 
 ## License
 
