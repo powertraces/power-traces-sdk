@@ -15,8 +15,50 @@
     <PackageOutputPath>$(MSBuildThisFileDirectory)..\nupkgs</PackageOutputPath>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
     <PackageIcon>icon.png</PackageIcon>
+    <!-- Links each package's nuget.org page ("Source repository" / "Project website") back here.
+         PublishRepositoryUrl also stamps the exact commit into the package, and the SDK's built-in
+         Source Link lets debuggers fetch the matching source from GitHub. -->
+    <PackageProjectUrl>https://github.com/powertraces/power-traces-sdk</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/powertraces/power-traces-sdk</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <IsPackable>true</IsPackable>
+    <!-- The packages target frameworks as old as netstandard2.1 (C# 8 by default), but the code is
+         written in current C#. Language features compile down to plain IL; the few that need
+         helper attributes on older frameworks get them from PolySharp below. Building therefore
+         needs the .NET 10 SDK or later, whatever framework the package targets. -->
+    <LangVersion>14</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- net6.0/net7.0 are out of support, but the Dashboard still targets them on purpose so apps
+         that haven't upgraded yet can use it. -->
+    <CheckEolTargetFramework>false</CheckEolTargetFramework>
+    <!-- Microsoft.Extensions.* 10.x (which OpenTelemetry 1.15.3+ requires: every older release has a
+         known vulnerability) only lists net8.0+ as tested, and warns when built for anything older.
+         Their netstandard2.0/2.1 builds are what .NET 5/6/7 apps load; silence the warning for our
+         own netstandard2.1/net6.0/net7.0 builds, the README tells consumers how to do the same. -->
+    <SuppressTfmSupportBuildWarnings>true</SuppressTfmSupportBuildWarnings>
   </PropertyGroup>
+
+  <!-- Target frameworks shared by every package except the Dashboard: netstandard2.1 (any runtime
+       that implements it: .NET Core 3.x, .NET 5/6/7, Mono, Unity) plus net8.0, so apps on current
+       .NET get the build that uses the framework's own APIs (source-generated regexes, Lock, ...)
+       instead of the shims in Shared/Compat.cs. Projects opt in with
+       <TargetFrameworks>$(PowerTracesLibraryTargets)</TargetFrameworks>. -->
+  <PropertyGroup>
+    <PowerTracesLibraryTargets>netstandard2.1;net8.0</PowerTracesLibraryTargets>
+  </PropertyGroup>
+
+  <!-- Shims for framework APIs that are missing on the older targets (see Shared/Compat.cs), and
+       the compiler-only attributes (init, required, CallerArgumentExpression, ...) that newer C#
+       features need there. PolySharp only generates the types a target is actually missing, and
+       is a build-time-only dependency: it never shows up in the published packages. -->
+  <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)Shared\Compat.cs" Link="Shared\Compat.cs" Visible="false" />
+    <Using Include="PowerTraces.Internal.Compat" />
+    <PackageReference Include="PolySharp" Version="1.15.0" PrivateAssets="all"
+      IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
+  </ItemGroup>
   <!-- Each project's own README.md (next to its .csproj) becomes the package's README, shown on
        nuget.org and in Visual Studio's package manager. -->
   <ItemGroup>

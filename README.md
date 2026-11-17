@@ -34,6 +34,33 @@ You need the base package (pulled in transitively), **one** provider package for
 you use, and the dashboard package if you want the UI. Each package has its own README with
 install instructions and a quick-start snippet.
 
+## Supported .NET versions
+
+| Package | Target frameworks | Runs on |
+|---|---|---|
+| `PowerTraces` and every provider package | `netstandard2.1`, `net8.0` | .NET 5 and later (plus .NET Core 3.x, Mono, Unity — anything that implements .NET Standard 2.1) |
+| `PowerTraces.Dashboard` | `net6.0`, `net7.0`, `net8.0`, `net9.0`, `net10.0` | ASP.NET Core 6 and later |
+
+Apps on .NET 8 or later get the `net8.0` build, which uses the framework's own APIs; older runtimes
+get the `netstandard2.1` build, which has small built-in fallbacks for the APIs they lack. The
+dashboard needs Minimal APIs, so it can't run on .NET 5 or older. .NET Framework isn't supported
+(it doesn't implement .NET Standard 2.1).
+
+On the netstandard2.1 build, PostgreSQL uses Npgsql 8.0.x (the last line with a .NET Standard
+build); everything else uses the same dependency versions on every target.
+
+**.NET 5, 6 and 7 apps:** OpenTelemetry 1.15.3 and later (every earlier release has a known
+vulnerability) depends on `Microsoft.Extensions.*` 10.x, whose packages print a build warning such as
+*"Microsoft.Extensions.Logging.Abstractions 10.0.0 doesn't support net6.0 and has not been tested
+with it"* on runtimes older than .NET 8. The packages work there (they load their
+.NET Standard builds); to hide the warning, add this to your app's `.csproj`:
+
+```xml
+<PropertyGroup>
+  <SuppressTfmSupportBuildWarnings>true</SuppressTfmSupportBuildWarnings>
+</PropertyGroup>
+```
+
 Don't see your database? Implement `IStorageWriter` (and `IDashboardStore` for dashboard support)
 yourself — both are public interfaces in the base package, and the four built-in providers are
 ordinary implementations of the same contract, not special-cased internally.
@@ -232,6 +259,10 @@ samples/
 ```
 
 ## Building
+
+Requires the **.NET 10 SDK** (the code uses C# 14 for every target, including the older ones). It
+builds every target framework above; the reference packs for the older ones are downloaded from
+NuGet automatically, so no older SDKs need to be installed.
 
 ```
 dotnet build PowerTraces.sln

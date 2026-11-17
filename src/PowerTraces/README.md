@@ -4,6 +4,8 @@ The base package for exporting [OpenTelemetry](https://opentelemetry.io/) traces
 to a database via a connection string — no collector, no EF Core. Tables/collections are created
 automatically on first use.
 
+Runs on .NET 5 and later (`netstandard2.1` and `net8.0` builds).
+
 This package is database-agnostic on its own — it defines the shapes (`IStorageWriter`,
 `IDashboardStore`) and the shared exporter plumbing. To actually write anywhere, add **one** of the
 provider packages:

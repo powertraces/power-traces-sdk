@@ -1,9 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
+    <TargetFrameworks>$(PowerTracesLibraryTargets)</TargetFrameworks>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -16,6 +14,13 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.11" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11" />
+  </ItemGroup>
+
+  <!-- Npgsql 9+ dropped netstandard2.1; 8.0.x is the last line that has it. -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.1'">
+    <PackageReference Include="Npgsql" Version="8.0.9" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(TargetFramework)' != 'netstandard2.1'">
     <PackageReference Include="Npgsql" Version="10.0.3" />
   </ItemGroup>
 
