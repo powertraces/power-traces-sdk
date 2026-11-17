@@ -47,6 +47,7 @@ public static class PowerTracesDashboardEndpointRouteBuilderExtensions
         var fileProvider = new ManifestEmbeddedFileProvider(typeof(PowerTracesDashboardEndpointRouteBuilderExtensions).Assembly, "wwwroot");
         var indexHtml = new DashboardIndexHtml(fileProvider);
 
+#if NET7_0_OR_GREATER
         var group = endpoints.MapGroup(mountPrefix);
 
         // Applied on the parent group so it covers the SPA and the /api sub-group alike — nested
@@ -63,6 +64,22 @@ public static class PowerTracesDashboardEndpointRouteBuilderExtensions
             await store.EnsureSchemaAsync(ctx.HttpContext.RequestAborted).ConfigureAwait(false);
             return await next(ctx).ConfigureAwait(false);
         });
+#else
+        // ASP.NET Core 6 has no route groups or endpoint filters: RouteGroupCompat does the same
+        // job (prefix + per-endpoint filters, parent group's filters running first).
+        var group = RouteGroupCompat.Create(endpoints, mountPrefix);
+
+        if (!string.IsNullOrEmpty(username))
+        {
+            group.AddFilter(BasicAuthFilter.CreateMiddleware(username, password!));
+        }
+
+        var api = RouteGroupCompat.Create(group, "/api").AddFilter(async (context, next) =>
+        {
+            await store.EnsureSchemaAsync(context.RequestAborted).ConfigureAwait(false);
+            await next(context).ConfigureAwait(false);
+        });
+#endif
         api.MapQueryEndpoints(store);
 
         group.MapSpa(mountPrefix, fileProvider, indexHtml, uiOptions);

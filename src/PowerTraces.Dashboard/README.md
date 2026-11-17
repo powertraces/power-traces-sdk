@@ -15,6 +15,8 @@ keyed by which provider you ask for. Register the provider(s) you actually use:
 | [`PowerTraces.MySQL`](https://www.nuget.org/packages/PowerTraces.MySQL) | `MySql` |
 | [`PowerTraces.Sqlite`](https://www.nuget.org/packages/PowerTraces.Sqlite) | `Sqlite` |
 
+Runs on ASP.NET Core 6 and later (`net6.0` through `net10.0` builds).
+
 ## Install
 
 ```

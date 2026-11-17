@@ -66,6 +66,13 @@ public static partial class PowerTracesSchema
         }
     }
 
+#if NET7_0_OR_GREATER
     [GeneratedRegex("^[A-Za-z_][A-Za-z0-9_]*$")]
     private static partial Regex ValidIdentifier();
+#else
+    // No regex source generator before .NET 7: a cached, compiled Regex does the same job.
+    private static readonly Regex ValidIdentifierRegex = new("^[A-Za-z_][A-Za-z0-9_]*$", RegexOptions.Compiled);
+
+    private static Regex ValidIdentifier() => ValidIdentifierRegex;
+#endif
 }

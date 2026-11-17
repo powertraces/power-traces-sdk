@@ -69,6 +69,13 @@ public sealed partial class SqlServerDialect : SqlDialect
         return parameter;
     }
 
+#if NET7_0_OR_GREATER
     [GeneratedRegex("\"([^\"]+)\"")]
     private static partial Regex QuotedIdentifier();
+#else
+    // No regex source generator before .NET 7: a cached, compiled Regex does the same job.
+    private static readonly Regex QuotedIdentifierRegex = new("\"([^\"]+)\"", RegexOptions.Compiled);
+
+    private static Regex QuotedIdentifier() => QuotedIdentifierRegex;
+#endif
 }

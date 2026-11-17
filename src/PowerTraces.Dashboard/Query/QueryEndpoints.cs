@@ -169,7 +169,7 @@ internal static class QueryEndpoints
     private static TraceSearchQuery ParseTraceSearch(IQueryCollection query)
     {
         var common = SearchQueryParts.Parse(query);
-        long? Long(string name) => long.TryParse(query[name], CultureInfo.InvariantCulture, out var value) && value >= 0 ? value : null;
+        long? Long(string name) => long.TryParse(query[name], NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) && value >= 0 ? value : null;
 
         return new TraceSearchQuery
         {
@@ -191,7 +191,7 @@ internal static class QueryEndpoints
     {
         var common = SearchQueryParts.Parse(query);
         var severities = query["severity"]
-            .Select(v => int.TryParse(v, CultureInfo.InvariantCulture, out var n) && n >= 0 ? n : (int?)null)
+            .Select(v => int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) && n >= 0 ? n : (int?)null)
             .OfType<int>()
             .ToList();
 
@@ -219,7 +219,7 @@ internal static class QueryEndpoints
         {
             DateTime? Time(string name) =>
                 DateTime.TryParse(query[name], CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var value) ? value : null;
-            int Int(string name, int fallback) => int.TryParse(query[name], CultureInfo.InvariantCulture, out var value) ? value : fallback;
+            int Int(string name, int fallback) => int.TryParse(query[name], NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) ? value : fallback;
 
             var from = Time("from");
             if (from is null && ParseRange(query["range"]) is { } range)

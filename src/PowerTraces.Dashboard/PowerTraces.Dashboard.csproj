@@ -1,9 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
+    <!-- One build per ASP.NET Core version from 6 onwards, so every app gets the build compiled
+         against its own shared framework (net6.0 has no route groups or endpoint filters; see
+         Internal/RouteGroupCompat.cs). .NET 5 and older have no Minimal APIs, so they can't host
+         the dashboard at all. -->
+    <TargetFrameworks>net6.0;net7.0;net8.0;net9.0;net10.0</TargetFrameworks>
     <RootNamespace>PowerTraces.Dashboard</RootNamespace>
     <GenerateEmbeddedFilesManifest>true</GenerateEmbeddedFilesManifest>
   </PropertyGroup>
@@ -32,6 +34,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11" />
+    <PackageReference Include="Microsoft.Extensions.FileProviders.Embedded" Version="10.0.11" />
   </ItemGroup>
 
   <!-- The built SPA (ClientWeb) is embedded into the assembly so the dashboard works from a bare
@@ -39,13 +42,12 @@
   <ItemGroup>
     <EmbeddedResource Include="wwwroot\**" />
   </ItemGroup>
-  <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.FileProviders.Embedded" Version="10.0.11" />
-  </ItemGroup>
 
   <!-- Build the Vite frontend before Build/Pack when requested — off by default so a plain
-       `dotnet build` doesn't require Node/Yarn to be installed. -->
-  <Target Name="BuildFrontend" BeforeTargets="BeforeBuild" Condition="'$(BuildFrontend)' == 'true'">
+       `dotnet build` doesn't require Node/Yarn to be installed. Runs once in the outer
+       (multi-target) build, before any per-framework build embeds wwwroot, rather than once per
+       target framework. -->
+  <Target Name="BuildFrontend" BeforeTargets="DispatchToInnerBuilds" Condition="'$(BuildFrontend)' == 'true'">
     <Exec Command="yarn install" WorkingDirectory="ClientWeb" />
     <Exec Command="yarn build" WorkingDirectory="ClientWeb" />
   </Target>

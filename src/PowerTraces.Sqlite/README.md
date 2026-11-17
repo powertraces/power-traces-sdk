@@ -5,6 +5,8 @@ SQLite provider for [PowerTraces](https://www.nuget.org/packages/PowerTraces) â€
 server, no collector, no migrations: the file and its tables are created the first time you write.
 Good for local development, single-server apps and small deployments.
 
+Runs on .NET 5 and later (`netstandard2.1` and `net8.0` builds).
+
 ## Install
 
 ```
