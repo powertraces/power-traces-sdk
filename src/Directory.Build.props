@@ -15,6 +15,13 @@
     <PackageOutputPath>$(MSBuildThisFileDirectory)..\nupkgs</PackageOutputPath>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
     <PackageIcon>icon.png</PackageIcon>
+    <!-- Links each package's nuget.org page ("Source repository" / "Project website") back here.
+         PublishRepositoryUrl also stamps the exact commit into the package, and the SDK's built-in
+         Source Link lets debuggers fetch the matching source from GitHub. -->
+    <PackageProjectUrl>https://github.com/powertraces/power-traces-sdk</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/powertraces/power-traces-sdk</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <IsPackable>true</IsPackable>
     <!-- The packages target frameworks as old as netstandard2.1 (C# 8 by default), but the code is
          written in current C#. Language features compile down to plain IL; the few that need
