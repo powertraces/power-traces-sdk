@@ -112,3 +112,9 @@ export function parseJsonContainer(text: string): Json[] | { [key: string]: Json
     return null
   }
 }
+
+/** Traces where the app marked a step failed with `Activity.MarkFailed` (see
+ * `ActivityFailureExtensions`) — the attribute it writes, as the search index keeps it. */
+export const APP_MARKED_FILTER: FieldFilter = { key: "powertraces.failure.source", value: "app", match: "Equals" }
+
+export const isAppMarkedFilter = (f: FieldFilter) => f.key === APP_MARKED_FILTER.key && f.value.toLowerCase() === "app" && f.match === "Equals"

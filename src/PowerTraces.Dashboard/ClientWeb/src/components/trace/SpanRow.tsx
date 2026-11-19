@@ -28,6 +28,7 @@ export function SpanRow({
   onToggle,
   exchanges,
   partnerId,
+  softIds,
 }: {
   span: SpanItem
   childrenByParent: Map<string, SpanItem[]>
@@ -48,6 +49,8 @@ export function SpanRow({
   exchanges: Map<string, Exchange>
   /** The other half of the selected span's call, highlighted with it. */
   partnerId: string | null
+  /** Calls (exchange ids) that answered with a success status but didn't work. */
+  softIds: Set<string>
 }) {
   const children = childrenByParent.get(span.spanId) ?? []
   const isCollapsed = !matches && collapsed.has(span.spanId)
@@ -67,6 +70,7 @@ export function SpanRow({
   const selected = selectedId === span.spanId
   const isPartner = partnerId === span.spanId
   const exchange = exchanges.get(span.spanId)
+  const soft = !!exchange && softIds.has(exchange.id)
   const pairedRole = exchange?.client && exchange.server ? (exchange.client.spanId === span.spanId ? "sent" : "answer") : null
   const dimmed = matches ? !matches(span) : false
 
@@ -141,6 +145,9 @@ export function SpanRow({
           </span>
           {isCollapsed && <span className="shrink-0 rounded bg-[var(--hover-strong)] px-1 text-[10px] text-[var(--text-muted)] tabular-nums">+{countDescendants(span.spanId, childrenByParent)}</span>}
           {ignoredSpanNames.has(span.name) && <span title="This span name is ignored for future exports" className="rounded border border-[var(--warn)]/40 px-1 py-0.5 text-[9px] text-[var(--warn)]">Ignored</span>}
+          {soft && (
+            <span className="h-2 w-2 shrink-0 rotate-45 bg-[var(--warn)]" title="Answered with a success status, but didn't work" aria-label="Said OK, but failed" />
+          )}
           {pairedRole && (
             <span
               title={
@@ -150,7 +157,11 @@ export function SpanRow({
               }
               className={clsx(
                 "shrink-0 rounded px-1 py-px text-[9px] font-bold tracking-wide",
-                pairedRole === "answer" && exchange!.failed ? "bg-[var(--error)]/15 text-[var(--error)]" : "bg-[var(--hover-strong)] text-[var(--text-muted)]",
+                pairedRole === "answer" && exchange!.failed
+                  ? "bg-[var(--error)]/15 text-[var(--error)]"
+                  : soft
+                    ? "bg-[var(--warn)]/15 text-[var(--warn)]"
+                    : "bg-[var(--hover-strong)] text-[var(--text-muted)]",
               )}
             >
               {pairedRole === "sent" ? "SENT" : "ANSWER"}
@@ -211,6 +222,7 @@ export function SpanRow({
           onToggle={onToggle}
           exchanges={exchanges}
           partnerId={partnerId}
+          softIds={softIds}
         />
       ))}
     </div>

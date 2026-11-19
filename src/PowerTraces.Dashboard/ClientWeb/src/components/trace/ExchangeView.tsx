@@ -6,6 +6,7 @@ import { CodeBlock } from "@/components/CodeBlock"
 import { CopyButton } from "@/components/CopyButton"
 import { httpStatusInfo } from "./glossary"
 import { readableMessage, type Exchange, type RecordedValue } from "./story"
+import type { SoftFailure } from "./softFailures"
 import { isSensitiveAttr, kindLabel } from "./traceHelpers"
 import { serviceOf } from "./traceAnalysis"
 
@@ -79,16 +80,22 @@ function Body({ label, body, full }: { label: string; body: RecordedValue | null
   )
 }
 
-function Side({ title, tone, chip, children }: { title: string; tone: "neutral" | "error"; chip: ReactNode; children: ReactNode }) {
+type Tone = "neutral" | "error" | "warn"
+
+function Side({ title, tone, chip, children }: { title: string; tone: Tone; chip: ReactNode; children: ReactNode }) {
   return (
     <div
       className={clsx(
         "flex min-w-0 flex-col gap-2.5 rounded-lg p-3 ring-1",
-        tone === "error" ? "bg-[var(--error)]/6 ring-[var(--error)]/40" : "bg-[var(--surface-raised)] ring-[var(--border)]",
+        tone === "error" ? "bg-[var(--error)]/6 ring-[var(--error)]/40" : tone === "warn" ? "bg-[var(--warn)]/6 ring-[var(--warn)]/50" : "bg-[var(--surface-raised)] ring-[var(--border)]",
       )}
     >
       <div className="flex min-w-0 flex-col items-start gap-1">
-        <span className={clsx("text-[11px] font-bold tracking-wider uppercase", tone === "error" ? "text-[var(--error)]" : "text-[var(--text-muted)]")}>{title}</span>
+        <span
+          className={clsx("text-[11px] font-bold tracking-wider uppercase", tone === "error" ? "text-[var(--error)]" : tone === "warn" ? "text-[var(--warn)]" : "text-[var(--text-muted)]")}
+        >
+          {title}
+        </span>
         {chip}
       </div>
       {children}
@@ -98,11 +105,22 @@ function Side({ title, tone, chip, children }: { title: string; tone: "neutral" 
 
 /** A call as one conversation: what was sent next to what came back, whichever span recorded
  * each half. `full` adds headers and complete bodies; the compact form previews them. */
-export function ExchangeView({ exchange: ex, full, onSelectSpan }: { exchange: Exchange; full: boolean; onSelectSpan: (spanId: string) => void }) {
+export function ExchangeView({
+  exchange: ex,
+  soft,
+  full,
+  onSelectSpan,
+}: {
+  exchange: Exchange
+  soft?: SoftFailure | null
+  full: boolean
+  onSelectSpan: (spanId: string) => void
+}) {
   const db = ex.kind === "db"
   const failed = ex.failed
   const info = ex.kind === "http" ? httpStatusInfo(ex.status) : null
-  const message = failed ? readableMessage(ex.responseBody?.text) : null
+  const message = failed ? readableMessage(ex.responseBody?.text) : (soft?.reason ?? null)
+  const backTone: Tone = failed ? "error" : soft ? "warn" : "neutral"
   const sentFrom = ex.query ?? ex.requestBody ?? (ex.client ? { span: ex.client } : ex.server ? { span: ex.server } : null)
   const backFrom = ex.responseBody ?? (ex.server ? { span: ex.server } : ex.client ? { span: ex.client } : null)
 
@@ -153,11 +171,18 @@ export function ExchangeView({ exchange: ex, full, onSelectSpan }: { exchange: E
           </div>
         )}
 
-        <Side title={db ? "Answer" : full ? "Response" : "What came back"} tone={failed ? "error" : "neutral"} chip={backFrom && <SourceChip value={backFrom} onSelect={onSelectSpan} />}>
+        <Side title={db ? "Answer" : full ? "Response" : "What came back"} tone={backTone} chip={backFrom && <SourceChip value={backFrom} onSelect={onSelectSpan} />}>
           {ex.status ? (
             <div className="font-mono text-xs">
-              <span className={clsx("font-medium", failed ? "text-[var(--error)]" : "text-[var(--success)]")}>{ex.status}</span> {ex.statusText}
-              {info && full && <span className="font-sans text-[var(--text-muted)]"> — {info.meaning}</span>}
+              <span className={clsx("font-medium", failed ? "text-[var(--error)]" : soft ? "text-[var(--success)] line-through decoration-[var(--text-dim)]" : "text-[var(--success)]")}>
+                {ex.status}
+              </span>{" "}
+              {ex.statusText}
+              {soft ? (
+                <span className="font-sans text-[var(--warn)]"> — the status says it worked; what happened next says it didn’t</span>
+              ) : (
+                info && full && <span className="font-sans text-[var(--text-muted)]"> — {info.meaning}</span>
+              )}
             </div>
           ) : db ? (
             <p className="text-xs">
@@ -173,10 +198,10 @@ export function ExchangeView({ exchange: ex, full, onSelectSpan }: { exchange: E
             </>
           )}
           {message && (
-            <div className="flex gap-2 rounded-md bg-[var(--error)]/10 px-2.5 py-2 text-xs leading-relaxed">
-              <MessageSquareWarning size={13} className="mt-0.5 shrink-0 text-[var(--error)]" aria-hidden="true" />
+            <div className={clsx("flex gap-2 rounded-md px-2.5 py-2 text-xs leading-relaxed", soft && !failed ? "bg-[var(--warn)]/10" : "bg-[var(--error)]/10")}>
+              <MessageSquareWarning size={13} className={clsx("mt-0.5 shrink-0", soft && !failed ? "text-[var(--warn)]" : "text-[var(--error)]")} aria-hidden="true" />
               <span>
-                The reply says: <strong>“{message}”</strong>
+                {failed ? "The reply says" : "Why it failed"}: <strong>“{message}”</strong>
               </span>
             </div>
           )}

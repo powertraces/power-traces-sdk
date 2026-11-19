@@ -1,6 +1,6 @@
 import { useState, type CSSProperties, type ReactNode } from "react"
 import { Link } from "react-router-dom"
-import { ArrowRight, Ban, ChevronRight, CircleAlert, Layers, Search } from "lucide-react"
+import { ArrowRight, Ban, ChevronRight, CircleAlert, Layers, Search, TriangleAlert } from "lucide-react"
 import clsx from "clsx"
 import type { SpanItem } from "@/lib/api"
 import { formatDuration } from "@/lib/format"
@@ -12,6 +12,7 @@ import { AttributeList } from "./AttributeList"
 import { ExceptionCard } from "./ExceptionCard"
 import { ExchangeView } from "./ExchangeView"
 import { describeSpan, partnerOf, type Exchange } from "./story"
+import type { SoftFailure } from "./softFailures"
 import { pathToSpan, serviceOf, spanExceptions, type TraceAnalysis } from "./traceAnalysis"
 
 export type SpanTab = "overview" | "exchange" | "technical"
@@ -60,7 +61,7 @@ function SpanAncestors({ span, analysis, onSelect }: { span: SpanItem; analysis:
 const visibleAttrs = (span: SpanItem) => Object.entries(span.attributes).filter(([, v]) => v != null && v !== "")
 
 /** The few facts anyone needs first, under everyday names. */
-function KeyFacts({ span, exchange, traceDurationMs, selfMs }: { span: SpanItem; exchange: Exchange | undefined; traceDurationMs: number; selfMs: number }) {
+function KeyFacts({ span, exchange, soft, traceDurationMs, selfMs }: { span: SpanItem; exchange: Exchange | undefined; soft: SoftFailure | null; traceDurationMs: number; selfMs: number }) {
   const share = Math.round((span.durationMs / (traceDurationMs || 1)) * 100)
   const hostOf = (s: SpanItem | null | undefined) => {
     const v = s && (s.attributes["host.name"] ?? s.attributes["k8s.pod.name"] ?? s.attributes["service.instance.id"])
@@ -68,14 +69,14 @@ function KeyFacts({ span, exchange, traceDurationMs, selfMs }: { span: SpanItem;
   }
   const ownHost = hostOf(span)
   const answerHost = exchange?.server && exchange.server.spanId !== span.spanId ? hostOf(exchange.server) : null
-  const facts: { label: string; value: ReactNode; tone?: "error" }[] = exchange
+  const facts: { label: string; value: ReactNode; tone?: "error" | "warn" }[] = exchange
     ? [
         { label: "Who asked", value: exchange.caller ?? "Not traced" },
         { label: exchange.kind === "db" ? "Database" : "Who answered", value: exchange.callee },
         {
           label: "Result",
-          value: exchange.status ? `${exchange.status}${exchange.statusText ? ` · ${exchange.statusText}` : ""}` : exchange.failed ? "Failed" : "Worked",
-          tone: exchange.failed ? "error" : undefined,
+          value: `${exchange.status ? `${exchange.status}${exchange.statusText ? ` · ${exchange.statusText}` : ""}` : exchange.failed ? "Failed" : "Worked"}${soft ? " · but failed" : ""}`,
+          tone: exchange.failed ? "error" : soft ? "warn" : undefined,
         },
       ]
     : [
@@ -92,10 +93,45 @@ function KeyFacts({ span, exchange, traceDurationMs, selfMs }: { span: SpanItem;
       {facts.map((f) => (
         <div key={f.label} className="min-w-0 rounded-lg px-3 py-2 ring-1 ring-[var(--border)]">
           <dt className="text-[11px] text-[var(--text-dim)]">{f.label}</dt>
-          <dd className={clsx("mt-0.5 truncate text-[13px] font-semibold", f.tone === "error" && "text-[var(--error)]")}>{f.value}</dd>
+          <dd className={clsx("mt-0.5 truncate text-[13px] font-semibold", f.tone === "error" && "text-[var(--error)]", f.tone === "warn" && "text-[var(--warn)]")}>{f.value}</dd>
         </div>
       ))}
     </dl>
+  )
+}
+
+/** Why a call that answered with a success status is counted as a failure: every finding with
+ * its strength, and the checks that found nothing. */
+export function Evidence({ soft, children }: { soft: SoftFailure; children?: ReactNode }) {
+  return (
+    <section aria-label="Why we think it failed" className="flex flex-col gap-2.5 rounded-lg bg-[var(--warn)]/5 p-3.5 ring-1 ring-[var(--warn)]/40">
+      <h3 className="flex items-center gap-1.5 text-[13px] font-semibold">
+        <TriangleAlert size={14} className="text-[var(--warn)]" aria-hidden="true" />
+        Said {soft.exchange.status ?? "OK"}, but we think it failed
+      </h3>
+      <ul className="flex flex-col gap-1.5 text-[12.5px] leading-relaxed">
+        {soft.signals.map((sig) => (
+          <li key={sig.id} className="flex items-start gap-2">
+            <span
+              className={clsx(
+                "mt-0.5 w-14 shrink-0 rounded px-1 py-px text-center text-[9px] font-bold tracking-wider",
+                sig.strength === "strong" ? "bg-[var(--warn)]/18 text-[var(--warn)]" : "bg-[var(--hover-strong)] text-[var(--text-muted)]",
+              )}
+            >
+              {sig.strength === "strong" ? "STRONG" : "WEAK"}
+            </span>
+            <span>{sig.text}</span>
+          </li>
+        ))}
+        {soft.notSeen.map((text) => (
+          <li key={text} className="flex items-start gap-2 text-[var(--text-dim)]">
+            <span className="mt-0.5 w-14 shrink-0 rounded px-1 py-px text-center text-[9px] font-bold tracking-wider ring-1 ring-[var(--border)]">NOT SEEN</span>
+            <span>{text}</span>
+          </li>
+        ))}
+      </ul>
+      {children}
+    </section>
   )
 }
 
@@ -106,6 +142,8 @@ export function SpanFocus({
   span,
   analysis,
   exchange,
+  soft,
+  softFeedback,
   traceDurationMs,
   ignored,
   onIgnore,
@@ -116,6 +154,10 @@ export function SpanFocus({
   span: SpanItem
   analysis: TraceAnalysis
   exchange: Exchange | undefined
+  /** Set when this span's call answered with a success status but didn't work. */
+  soft: SoftFailure | null
+  /** Rendered under the evidence — the "was it a failure?" buttons. */
+  softFeedback?: ReactNode
   traceDurationMs: number
   ignored: boolean
   onIgnore: (name: string) => void
@@ -169,13 +211,29 @@ export function SpanFocus({
             <span
               className={clsx(
                 "shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium",
-                span.hasError ? "bg-[var(--error)]/12 text-[var(--error)]" : span.status === "OK" ? "bg-[var(--success)]/12 text-[var(--success)]" : "bg-[var(--hover-strong)] text-[var(--text-muted)]",
+                span.hasError
+                  ? "bg-[var(--error)]/12 text-[var(--error)]"
+                  : soft
+                    ? "bg-[var(--warn)]/12 text-[var(--warn)]"
+                    : span.status === "OK"
+                      ? "bg-[var(--success)]/12 text-[var(--success)]"
+                      : "bg-[var(--hover-strong)] text-[var(--text-muted)]",
               )}
             >
-              {span.hasError ? (httpStatus ? `Error · ${httpStatus}` : "Error") : span.status === "OK" ? (httpStatus ? `OK · ${httpStatus}` : "OK") : httpStatus ?? "Unset"}
+              {span.hasError
+                ? httpStatus
+                  ? `Error · ${httpStatus}`
+                  : "Error"
+                : soft
+                  ? `${httpStatus ?? "OK"} · but failed`
+                  : span.status === "OK"
+                    ? httpStatus
+                      ? `OK · ${httpStatus}`
+                      : "OK"
+                    : (httpStatus ?? "Unset")}
             </span>
           </div>
-          <p className="text-sm leading-relaxed text-[var(--text)]">{describeSpan(span, exchange)}</p>
+          <p className="text-sm leading-relaxed text-[var(--text)]">{describeSpan(span, exchange, soft)}</p>
         </div>
 
         <div className="flex flex-col gap-1.5">
@@ -253,8 +311,9 @@ export function SpanFocus({
                 <CopyButton value={span.statusMessage} label="Copy status message" className="-my-1 self-start" />
               </div>
             )}
-            {exchange && <ExchangeView exchange={exchange} full={false} onSelectSpan={onSelect} />}
-            <KeyFacts span={span} exchange={exchange} traceDurationMs={traceDurationMs} selfMs={selfMs} />
+            {soft && <Evidence soft={soft}>{softFeedback}</Evidence>}
+            {exchange && <ExchangeView exchange={exchange} soft={soft} full={false} onSelectSpan={onSelect} />}
+            <KeyFacts span={span} exchange={exchange} soft={soft} traceDurationMs={traceDurationMs} selfMs={selfMs} />
             <button
               type="button"
               onClick={() => onTabChange("technical")}
@@ -269,7 +328,7 @@ export function SpanFocus({
           </>
         )}
 
-        {tab === "exchange" && exchange && <ExchangeView exchange={exchange} full onSelectSpan={onSelect} />}
+        {tab === "exchange" && exchange && <ExchangeView exchange={exchange} soft={soft} full onSelectSpan={onSelect} />}
 
         {tab === "technical" && <Technical span={span} partner={partner} offsetMs={offsetMs} onSelect={onSelect} />}
       </div>

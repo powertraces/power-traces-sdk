@@ -148,6 +148,33 @@ tracing.AddPowerTracesMsSqlExporter(connectionString, o =>
 > that database or open the dashboard can see it. Both ways are opt-in for that reason. The work
 > runs only when an exception is recorded, never for spans that don't fail.
 
+## Replies that say 200 but failed
+
+Some APIs answer `200 OK` and put the failure in the body. Nothing in the trace reports an error,
+so the trace page looks for what happened around each call that answered with a success status,
+without assuming anything about the body's fields:
+
+- the caller failed or threw right after the reply;
+- the caller logged a warning or an error right after the reply;
+- the same request was sent again right after (a retry).
+
+When one of these shows up, the call is marked **Said 200, but failed**: the trace summary blames
+the service that sent the reply, and the call lists the evidence it found and the checks that
+found nothing.
+
+The surest signal is the app's own: mark the span failed where your code reads the reply.
+
+```csharp
+var reply = await http.PostAsJsonAsync("/debit", request);
+var body = await reply.Content.ReadFromJsonAsync<DebitResult>();
+if (body is { IsSuccess: false })
+    Activity.Current.MarkFailed(body.Message, body.ErrorCode);
+```
+
+`MarkFailed` sets the span's status to Error and records `powertraces.failure.reason`,
+`powertraces.failure.code` and `powertraces.failure.source = app`. The Traces page's
+**Marked failed by the app** filter finds these traces.
+
 ## Attribute key casing
 
 Attribute keys are stored exactly as given, mixed case included, and so are string values: a

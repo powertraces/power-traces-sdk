@@ -3,6 +3,7 @@ import { formatDuration } from "@/lib/format"
 import { grpcStatusText, httpStatusInfo, statusBlame } from "./glossary"
 import { getHttpStatusFromSpan } from "./traceHelpers"
 import { serviceOf, spanExceptions, type TraceAnalysis } from "./traceAnalysis"
+import type { Signal, SoftFailure } from "./softFailures"
 
 // The trace told as a story: which calls were made between whom (an exchange pairs the caller's
 // CLIENT span with the receiver's SERVER span, wherever each recorded its half of the request and
@@ -286,7 +287,8 @@ const clip = (text: string, max = 220) => {
   return one.length > max ? `${one.slice(0, max - 1)}…` : one
 }
 
-export type Outcome = "ok" | "failed"
+/** `soft`: nothing reported an error, but a call that answered with a success status didn't work. */
+export type Outcome = "ok" | "failed" | "soft"
 
 export interface Verdict {
   outcome: Outcome
@@ -300,7 +302,14 @@ export interface Verdict {
   exchange: Exchange | null
   /** One or two sentences of context after the headline. */
   details: string[]
+  /** Set when the culprit answered with a success status: why we think it failed anyway. */
+  soft: SoftFailure | null
 }
+
+/** "answered 200 OK" for a success status, or just "answered" when none was recorded. */
+const answeredWith = (ex: Exchange) => (ex.status ? `answered ${ex.status}${ex.statusText ? ` ${ex.statusText}` : ""}` : "answered")
+
+const signalSummary = (signals: Signal[]) => joinNames(signals.filter((s) => s.strength === "strong").map((s) => s.short))
 
 function describeFailure(span: SpanItem, exchange: Exchange | undefined): { culprit: string; happened: string } {
   if (exchange) {
@@ -320,15 +329,40 @@ export function joinNames(names: string[]): string {
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`
 }
 
-export function buildVerdict(trace: TraceDetail, analysis: TraceAnalysis, exchanges: Map<string, Exchange>): Verdict {
+export function buildVerdict(trace: TraceDetail, analysis: TraceAnalysis, exchanges: Map<string, Exchange>, softFailures: Map<string, SoftFailure> = new Map()): Verdict {
   const causes = rootCauses(trace, analysis)
-  const focus = causes[0] ?? null
+  const firstCause = causes[0] ?? null
+  const softList = [...softFailures.values()].sort((a, b) => a.exchange.startMs - b.exchange.startMs)
+
+  // A step that failed right after a call answered "OK" failed because of that reply: blame the
+  // service that sent it.
+  const softBehindCause = firstCause && softList.find((sf) => (sf.exchange.client ?? sf.exchange.server)!.parentSpanId === firstCause.spanId)
+  const soft = softBehindCause ?? (firstCause ? null : (softList[0] ?? null))
+  if (soft) {
+    const ex = soft.exchange
+    const details = [
+      `${ex.caller ?? "The caller"} asked ${ex.callee} to handle ${[ex.method, ex.target].filter(Boolean).join(" ") || "a request"}, and the status code said it worked.`,
+      `We think it didn’t because ${signalSummary(soft.signals)}.`,
+    ]
+    return {
+      outcome: firstCause ? "failed" : "soft",
+      focus: ex.client ?? ex.server,
+      culprit: ex.callee,
+      happened: `${answeredWith(ex)}, but the reply meant failure`,
+      reason: soft.reason ? clip(soft.reason) : null,
+      exchange: ex,
+      details,
+      soft,
+    }
+  }
+
+  const focus = firstCause
   if (!focus) {
     const total = analysis.services.reduce((sum, s) => sum + s.criticalMs, 0)
     const top = analysis.services[0]
     const details = [`Finished in ${formatDuration(trace.durationMs)} across ${analysis.services.length} ${analysis.services.length === 1 ? "service" : "services"}.`]
     if (top && total > 0 && analysis.services.length > 1) details.push(`Most of the time (${Math.round((top.criticalMs / total) * 100)}%) was spent in ${top.name}.`)
-    return { outcome: "ok", focus: null, culprit: null, happened: null, reason: null, exchange: null, details }
+    return { outcome: "ok", focus: null, culprit: null, happened: null, reason: null, exchange: null, details, soft: null }
   }
 
   const exchange = exchanges.get(focus.spanId)
@@ -358,22 +392,20 @@ export function buildVerdict(trace: TraceDetail, analysis: TraceAnalysis, exchan
   }
   if (causes.length > 1) details.push(`${causes.length - 1} other ${causes.length === 2 ? "step" : "steps"} failed too.`)
 
-  return { outcome: "failed", focus, culprit, happened, reason, exchange: exchange ?? null, details }
+  return { outcome: "failed", focus, culprit, happened, reason, exchange: exchange ?? null, details, soft: null }
 }
 
 /** The verdict as one line of text, for copying into a chat or ticket. */
 export function verdictText(trace: TraceDetail, verdict: Verdict): string {
   const name = trace.rootName ?? "The request"
-  const head =
-    verdict.outcome === "ok"
-      ? `${name} worked.`
-      : `${name} failed because ${verdict.culprit} ${verdict.happened}${verdict.reason ? `: ${verdict.reason}` : ""}.`
+  const why = `${verdict.culprit} ${verdict.happened}${verdict.reason ? `: ${verdict.reason}` : ""}`
+  const head = verdict.outcome === "ok" ? `${name} worked.` : verdict.outcome === "soft" ? `${name} probably didn't work: ${why}.` : `${name} failed because ${why}.`
   return [head, ...verdict.details].join(" ")
 }
 
 // ── The journey ─────────────────────────────────────────────────────────────
 
-export type StepState = "ok" | "problem" | "affected"
+export type StepState = "ok" | "problem" | "soft" | "affected"
 
 export interface JourneyStep {
   key: string
@@ -408,7 +440,7 @@ export function buildJourney(trace: TraceDetail, exchanges: Map<string, Exchange
   // that service) — not the caller that recorded the error.
   const ex = verdict.exchange
   const culpritKey =
-    verdict.outcome !== "failed" || !verdict.focus
+    verdict.outcome === "ok" || !verdict.focus
       ? null
       : ex?.server
         ? `svc:${serviceOf(ex.server)}`
@@ -419,9 +451,9 @@ export function buildJourney(trace: TraceDetail, exchanges: Map<string, Exchange
     const owned = step.spans
     const failing = owned.filter((s) => s.hasError)
     if (step.key === culpritKey) {
-      step.state = "problem"
       const status = verdict.exchange?.status
-      step.note = status ? `Problem here · ${status}` : "Problem here"
+      step.state = verdict.soft ? "soft" : "problem"
+      step.note = verdict.soft ? `Said ${status ?? "OK"}, but failed` : status ? `Problem here · ${status}` : "Problem here"
       step.spanId = verdict.focus?.spanId ?? step.spanId
     } else if (failing.length > 0) {
       step.state = "affected"
@@ -441,7 +473,12 @@ export function buildJourney(trace: TraceDetail, exchanges: Map<string, Exchange
 // ── One span, in a sentence ─────────────────────────────────────────────────
 
 /** What a span did, for the details pane: who asked whom for what, and how it ended. */
-export function describeSpan(span: SpanItem, exchange: Exchange | undefined): string {
+export function describeSpan(span: SpanItem, exchange: Exchange | undefined, soft?: SoftFailure | null): string {
+  const base = describeCall(span, exchange, !!soft)
+  return soft ? `${base} The status code says it worked, but it didn’t: ${signalSummary(soft.signals)}.` : base
+}
+
+function describeCall(span: SpanItem, exchange: Exchange | undefined, soft: boolean): string {
   const took = formatDuration(span.durationMs)
   if (exchange) {
     const caller = exchange.caller ?? "A caller"
@@ -453,7 +490,7 @@ export function describeSpan(span: SpanItem, exchange: Exchange | undefined): st
     const asked = `${caller} sent ${what ? `${what} ` : "a request "}to ${exchange.callee}.`
     if (exchange.status) {
       const info = httpStatusInfo(exchange.status)
-      const meaning = info && exchange.kind === "http" ? `: ${info.meaning}` : ""
+      const meaning = info && exchange.kind === "http" && !soft ? `: ${info.meaning}` : ""
       return `${asked} ${exchange.callee} answered ${exchange.status}${exchange.statusText ? ` ${exchange.statusText}` : ""}${meaning}, after ${formatDuration(exchange.durationMs)}.`
     }
     if (exchange.failed) return `${asked} No answer came back; it failed after ${formatDuration(exchange.durationMs)}.`

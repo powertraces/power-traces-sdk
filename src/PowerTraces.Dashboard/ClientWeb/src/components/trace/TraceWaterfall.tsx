@@ -25,6 +25,7 @@ export function TraceWaterfall({
   toolbarStart,
   exchanges,
   partnerSpanId,
+  softIds,
 }: {
   trace: TraceDetailDto
   analysis: TraceAnalysis
@@ -38,6 +39,7 @@ export function TraceWaterfall({
   exchanges: Map<string, Exchange>
   /** The other half of the selected span's call. */
   partnerSpanId: string | null
+  softIds: Set<string>
 }) {
   const [find, setFind] = useState("")
   const [errorsOnly, setErrorsOnly] = useState(false)
@@ -144,6 +146,7 @@ export function TraceWaterfall({
             onToggle={toggle}
             exchanges={exchanges}
             partnerId={partnerSpanId}
+            softIds={softIds}
           />
         ))}
       </div>

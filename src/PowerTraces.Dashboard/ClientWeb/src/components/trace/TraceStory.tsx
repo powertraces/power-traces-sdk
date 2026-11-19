@@ -1,5 +1,5 @@
 import { Fragment } from "react"
-import { ArrowRight, CircleAlert, CircleCheck, Crosshair } from "lucide-react"
+import { ArrowRight, CircleAlert, CircleCheck, Crosshair, TriangleAlert } from "lucide-react"
 import clsx from "clsx"
 import type { TraceDetail } from "@/lib/api"
 import { Button } from "@/components/ui"
@@ -23,7 +23,19 @@ export function TraceStory({
   onSelectSpan: (spanId: string) => void
 }) {
   const failed = verdict.outcome === "failed"
+  const soft = verdict.outcome === "soft"
   const name = trace.rootName ?? "The request"
+  const why = (
+    <>
+      <span className={soft ? "text-[var(--warn)]" : "text-[var(--error)]"}>{verdict.culprit}</span> {verdict.happened}
+      {verdict.reason ? (
+        <>
+          : <span className={soft ? "text-[var(--warn)]" : "text-[var(--error)]"}>{verdict.reason}</span>
+        </>
+      ) : null}
+      .
+    </>
+  )
 
   return (
     <section aria-label="What happened" className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-[var(--shadow-sm)]">
@@ -31,23 +43,21 @@ export function TraceStory({
         <span
           className={clsx(
             "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl",
-            failed ? "bg-[var(--error)]/12 text-[var(--error)]" : "bg-[var(--success)]/12 text-[var(--success)]",
+            failed ? "bg-[var(--error)]/12 text-[var(--error)]" : soft ? "bg-[var(--warn)]/12 text-[var(--warn)]" : "bg-[var(--success)]/12 text-[var(--success)]",
           )}
           aria-hidden="true"
         >
-          {failed ? <CircleAlert size={20} /> : <CircleCheck size={20} />}
+          {failed ? <CircleAlert size={20} /> : soft ? <TriangleAlert size={20} /> : <CircleCheck size={20} />}
         </span>
         <div className="flex min-w-0 flex-[999_1_480px] flex-col gap-1.5">
           <h2 className="text-lg leading-snug font-semibold">
             {failed ? (
               <>
-                <span className="font-mono">{name}</span> failed because <span className="text-[var(--error)]">{verdict.culprit}</span> {verdict.happened}
-                {verdict.reason ? (
-                  <>
-                    : <span className="text-[var(--error)]">{verdict.reason}</span>
-                  </>
-                ) : null}
-                .
+                <span className="font-mono">{name}</span> failed because {why}
+              </>
+            ) : soft ? (
+              <>
+                <span className="font-mono">{name}</span> probably didn’t work: {why}
               </>
             ) : (
               <>
@@ -60,7 +70,7 @@ export function TraceStory({
         <div className="flex flex-wrap items-center gap-2">
           {verdict.focus && (
             <Button variant="primary" onClick={() => onSelectSpan(verdict.focus!.spanId)}>
-              <Crosshair size={13} /> Show failing step
+              <Crosshair size={13} /> {soft ? "Show the reply" : "Show failing step"}
             </Button>
           )}
           <CopyButton
@@ -119,8 +129,10 @@ function Journey({ steps, onSelect }: { steps: JourneyStep[]; onSelect: (spanId:
                   "flex min-w-32 flex-col items-start gap-0.5 rounded-lg px-3 py-2 text-left transition-colors",
                   step.state === "problem"
                     ? "border-2 border-[var(--error)] bg-[var(--error)]/8 hover:bg-[var(--error)]/12"
-                    : "border border-[var(--border)] bg-[var(--surface-raised)] hover:border-[var(--border-strong)]",
-                  step.external && step.state !== "problem" && "border-dashed",
+                    : step.state === "soft"
+                      ? "border-2 border-[var(--warn)] bg-[var(--warn)]/8 hover:bg-[var(--warn)]/12"
+                      : "border border-[var(--border)] bg-[var(--surface-raised)] hover:border-[var(--border-strong)]",
+                  step.external && step.state !== "problem" && step.state !== "soft" && "border-dashed",
                 )}
               >
                 <span className="flex items-center gap-1.5 text-[13px] font-semibold">
@@ -133,7 +145,12 @@ function Journey({ steps, onSelect }: { steps: JourneyStep[]; onSelect: (spanId:
                   />
                   {step.name}
                 </span>
-                <span className={clsx("text-xs", step.state === "problem" ? "font-medium text-[var(--error)]" : step.state === "affected" ? "text-[var(--warn)]" : "text-[var(--text-muted)]")}>
+                <span
+                  className={clsx(
+                    "text-xs",
+                    step.state === "problem" ? "font-medium text-[var(--error)]" : step.state === "soft" ? "font-medium text-[var(--warn)]" : step.state === "affected" ? "text-[var(--warn)]" : "text-[var(--text-muted)]",
+                  )}
+                >
                   {step.note}
                 </span>
               </button>
