@@ -10,7 +10,9 @@ import { useUrlState } from "@/lib/urlState"
 import { TraceHeader } from "@/components/trace/TraceHeader"
 import { TraceWaterfall } from "@/components/trace/TraceWaterfall"
 import { TraceHotspots } from "@/components/trace/TraceHotspots"
-import { SpanFocus } from "@/components/trace/SpanFocus"
+import { SpanFocus, type SpanTab } from "@/components/trace/SpanFocus"
+import { TraceStory } from "@/components/trace/TraceStory"
+import { buildExchanges, buildJourney, buildVerdict, partnerOf } from "@/components/trace/story"
 import { analyzeTrace, pathToSpan } from "@/components/trace/traceAnalysis"
 
 type View = "timeline" | "hotspots"
@@ -35,18 +37,23 @@ function TraceView({ trace }: { trace: TraceDetailDto }) {
   const { params, update } = useUrlState()
   const view: View = params.get("view") === "hotspots" ? "hotspots" : "timeline"
   const analysis = useMemo(() => analyzeTrace(trace), [trace])
+  const exchanges = useMemo(() => buildExchanges(trace, analysis), [trace, analysis])
+  const verdict = useMemo(() => buildVerdict(trace, analysis, exchanges), [trace, analysis, exchanges])
+  const journey = useMemo(() => buildJourney(trace, exchanges, verdict), [trace, exchanges, verdict])
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
+  // Kept while moving between spans, so comparing requests stays on the same tab.
+  const [tab, setTab] = useState<SpanTab>("overview")
   const detailsRef = useRef<HTMLDivElement>(null)
 
   const requested = params.get("span")
   const selected =
     (requested && analysis.spanById.get(requested)) ||
-    // Default to the first failing span — usually the reason anyone opened the trace — else the root.
-    trace.spans
-      .filter((s) => s.hasError && !(analysis.childrenByParent.get(s.spanId) ?? []).some((c) => c.hasError))
-      .sort((a, b) => a.startTime.localeCompare(b.startTime))[0] ||
+    // Default to where things first went wrong — usually the reason anyone opened the trace — else the root.
+    verdict.focus ||
     analysis.roots[0] ||
     trace.spans[0]
+
+  const partner = selected ? partnerOf(selected, exchanges.get(selected.spanId)) : null
 
   const { data: ignoreRules } = useQuery({ queryKey: ["ignore-rules"], queryFn: getIgnoreRules })
   const invalidateRules = () => queryClient.invalidateQueries({ queryKey: ["ignore-rules"] })
@@ -135,6 +142,8 @@ function TraceView({ trace }: { trace: TraceDetailDto }) {
 
       <TraceHeader trace={trace} analysis={analysis} retention={retention?.settings ?? null} actions={actions} />
 
+      <TraceStory trace={trace} verdict={verdict} journey={journey} onSelectSpan={selectSpan} />
+
       {/* Master–detail: the span tree (or the hotspots) on the left, the selected span on the
           right, pinned in view while the tree scrolls. Stacked below xl. */}
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(400px,1fr)]">
@@ -149,6 +158,8 @@ function TraceView({ trace }: { trace: TraceDetailDto }) {
               collapsed={collapsed}
               onCollapsedChange={setCollapsed}
               toolbarStart={viewSwitch}
+              exchanges={exchanges}
+              partnerSpanId={partner?.spanId ?? null}
             />
           ) : (
             <>
@@ -164,6 +175,9 @@ function TraceView({ trace }: { trace: TraceDetailDto }) {
               key={selected.spanId}
               span={selected}
               analysis={analysis}
+              exchange={exchanges.get(selected.spanId)}
+              tab={tab}
+              onTabChange={setTab}
               traceDurationMs={trace.durationMs}
               ignored={ignoredSpanNames.has(selected.name) || (ignoreSpan.isSuccess && ignoreSpan.variables === selected.name)}
               onIgnore={(name) => ignoreSpan.mutate(name)}

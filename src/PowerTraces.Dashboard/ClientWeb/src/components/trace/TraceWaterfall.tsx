@@ -7,6 +7,7 @@ import { Button } from "@/components/ui"
 import { SpanRow } from "./SpanRow"
 import { NAME_COLUMN } from "./spanTree"
 import type { TraceAnalysis } from "./traceAnalysis"
+import type { Exchange } from "./story"
 
 const MARKER_PCTS = [0, 25, 50, 75, 100]
 
@@ -22,6 +23,8 @@ export function TraceWaterfall({
   collapsed,
   onCollapsedChange,
   toolbarStart,
+  exchanges,
+  partnerSpanId,
 }: {
   trace: TraceDetailDto
   analysis: TraceAnalysis
@@ -32,6 +35,9 @@ export function TraceWaterfall({
   onCollapsedChange: (next: Set<string>) => void
   /** Rendered first in the toolbar row — the page's view switch. */
   toolbarStart?: ReactNode
+  exchanges: Map<string, Exchange>
+  /** The other half of the selected span's call. */
+  partnerSpanId: string | null
 }) {
   const [find, setFind] = useState("")
   const [errorsOnly, setErrorsOnly] = useState(false)
@@ -136,6 +142,8 @@ export function TraceWaterfall({
             matches={matches}
             collapsed={collapsed}
             onToggle={toggle}
+            exchanges={exchanges}
+            partnerId={partnerSpanId}
           />
         ))}
       </div>

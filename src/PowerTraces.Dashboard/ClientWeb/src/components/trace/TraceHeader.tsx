@@ -66,7 +66,7 @@ export function TraceHeader({
     <header className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-[var(--shadow-sm)]">
       <div className="flex flex-col gap-4 p-5 pb-4">
         <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
-          <div className="flex min-w-0 flex-1 items-start gap-3">
+          <div className="flex min-w-0 flex-[1_1_16rem] items-start gap-3">
             <span
               className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${trace.hasError ? "bg-[var(--error)]/12 text-[var(--error)]" : "bg-[var(--success)]/12 text-[var(--success)]"}`}
               title={trace.hasError ? "Failed" : "Succeeded"}

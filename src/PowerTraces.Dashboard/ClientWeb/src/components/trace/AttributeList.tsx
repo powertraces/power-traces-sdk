@@ -5,6 +5,7 @@ import { CodeBlock } from "@/components/CodeBlock"
 import { CopyButton } from "@/components/CopyButton"
 import { parseJsonContainer } from "@/lib/traceSearch"
 import { ATTR_NAMESPACE_LABELS, groupAttrs, isSensitiveAttr } from "./traceHelpers"
+import { attributeLabel } from "./glossary"
 import { FieldActions } from "./FieldActions"
 import { RowActions } from "./JsonFieldsView"
 import { JsonStructureDialog } from "./JsonStructureDialog"
@@ -66,6 +67,7 @@ function namespaceLabel(ns: string): string {
 function AttributeRow({ attributeKey: k, label, value }: { attributeKey: string; label: string; value: string }) {
   const json = useMemo(() => parseJsonContainer(value), [value])
   const sensitive = isSensitiveAttr(k)
+  const plain = attributeLabel(k)
   const long = json === null && (value.length > INLINE_LIMIT || value.includes("\n"))
   const foldable = !sensitive && (json !== null || long)
   const [open, setOpen] = useState(false)
@@ -82,7 +84,14 @@ function AttributeRow({ attributeKey: k, label, value }: { attributeKey: string;
           ) : (
             <span className="w-3 shrink-0" />
           )}
-          <span className="truncate">{label}</span>
+          {plain ? (
+            <span className="flex min-w-0 flex-col py-1 leading-tight">
+              <span className="truncate font-sans text-xs text-[var(--text)]">{plain}</span>
+              <span className="truncate text-[10px] text-[var(--text-dim)]">{label}</span>
+            </span>
+          ) : (
+            <span className="truncate">{label}</span>
+          )}
           {sensitive && <Lock size={10} className="shrink-0 text-[var(--warn)]" aria-label="Sensitive" />}
         </span>
         <span className="min-w-0 flex-1">
