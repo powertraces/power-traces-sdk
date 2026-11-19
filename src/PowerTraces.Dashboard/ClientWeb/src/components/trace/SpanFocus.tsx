@@ -2,7 +2,7 @@ import { useState, type CSSProperties, type ReactNode } from "react"
 import { Link } from "react-router-dom"
 import { ArrowRight, Ban, ChevronRight, CircleAlert, Layers, Search, TriangleAlert } from "lucide-react"
 import clsx from "clsx"
-import type { SpanItem } from "@/lib/api"
+import type { ReplyComparisonDto, SpanItem } from "@/lib/api"
 import { formatDuration } from "@/lib/format"
 import { CodeBlock } from "@/components/CodeBlock"
 import { CopyButton } from "@/components/CopyButton"
@@ -12,7 +12,8 @@ import { AttributeList } from "./AttributeList"
 import { ExceptionCard } from "./ExceptionCard"
 import { ExchangeView } from "./ExchangeView"
 import { describeSpan, partnerOf, type Exchange } from "./story"
-import type { SoftFailure } from "./softFailures"
+import { MIN_COMPARISON_SAMPLE, type SoftFailure } from "./softFailures"
+import { ReplyComparisonView, ReplyFeedback } from "./ReplyComparison"
 import { pathToSpan, serviceOf, spanExceptions, type TraceAnalysis } from "./traceAnalysis"
 
 export type SpanTab = "overview" | "exchange" | "technical"
@@ -143,7 +144,9 @@ export function SpanFocus({
   analysis,
   exchange,
   soft,
-  softFeedback,
+  comparison,
+  onVerdict,
+  verdictPending,
   traceDurationMs,
   ignored,
   onIgnore,
@@ -156,8 +159,10 @@ export function SpanFocus({
   exchange: Exchange | undefined
   /** Set when this span's call answered with a success status but didn't work. */
   soft: SoftFailure | null
-  /** Rendered under the evidence — the "was it a failure?" buttons. */
-  softFeedback?: ReactNode
+  /** This call's reply next to its usual successful replies, when there's a baseline. */
+  comparison: ReplyComparisonDto | null
+  onVerdict: (shapeKey: string, verdict: "failure" | "fine" | null) => void
+  verdictPending: boolean
   traceDurationMs: number
   ignored: boolean
   onIgnore: (name: string) => void
@@ -311,7 +316,11 @@ export function SpanFocus({
                 <CopyButton value={span.statusMessage} label="Copy status message" className="-my-1 self-start" />
               </div>
             )}
-            {soft && <Evidence soft={soft}>{softFeedback}</Evidence>}
+            {soft && (
+              <Evidence soft={soft}>{comparison && <ReplyFeedback comparison={comparison} pending={verdictPending} onVerdict={onVerdict} />}</Evidence>
+            )}
+            {!soft && comparison?.verdict === "fine" && <ReplyFeedback comparison={comparison} pending={verdictPending} onVerdict={onVerdict} />}
+            {soft && comparison && comparison.sampleSize >= MIN_COMPARISON_SAMPLE && <ReplyComparisonView comparison={comparison} />}
             {exchange && <ExchangeView exchange={exchange} soft={soft} full={false} onSelectSpan={onSelect} />}
             <KeyFacts span={span} exchange={exchange} soft={soft} traceDurationMs={traceDurationMs} selfMs={selfMs} />
             <button
@@ -328,7 +337,12 @@ export function SpanFocus({
           </>
         )}
 
-        {tab === "exchange" && exchange && <ExchangeView exchange={exchange} soft={soft} full onSelectSpan={onSelect} />}
+        {tab === "exchange" && exchange && (
+          <>
+            <ExchangeView exchange={exchange} soft={soft} full onSelectSpan={onSelect} />
+            {comparison && comparison.sampleSize >= MIN_COMPARISON_SAMPLE && <ReplyComparisonView comparison={comparison} />}
+          </>
+        )}
 
         {tab === "technical" && <Technical span={span} partner={partner} offsetMs={offsetMs} onSelect={onSelect} />}
       </div>

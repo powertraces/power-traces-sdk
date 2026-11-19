@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from "react"
 import { useParams, Link } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Ban, ChevronRight, Pin, PinOff } from "lucide-react"
-import { createIgnoreRule, getIgnoreRules, getRetention, getTrace, pinTrace, searchLogs, unpinTrace, type TraceDetail as TraceDetailDto } from "@/lib/api"
+import { createIgnoreRule, getIgnoreRules, getRetention, getTrace, getTraceBaseline, pinTrace, searchLogs, setReplyVerdict, unpinTrace, type TraceDetail as TraceDetailDto } from "@/lib/api"
 import { EmptyState, Loading } from "@/components/Panel"
 import { Button, Segmented } from "@/components/ui"
 import { CopyButton } from "@/components/CopyButton"
@@ -14,7 +14,7 @@ import { SpanFocus, type SpanTab } from "@/components/trace/SpanFocus"
 import { TraceStory } from "@/components/trace/TraceStory"
 import { buildExchanges, buildJourney, buildVerdict, partnerOf } from "@/components/trace/story"
 import { analyzeTrace, pathToSpan } from "@/components/trace/traceAnalysis"
-import { findSoftFailures, softFailureOf } from "@/components/trace/softFailures"
+import { comparisonFor, findSoftFailures, softFailureOf } from "@/components/trace/softFailures"
 
 type View = "timeline" | "hotspots"
 
@@ -56,7 +56,19 @@ function TraceView({ trace }: { trace: TraceDetailDto }) {
       ),
     retry: false,
   })
-  const softFailures = useMemo(() => findSoftFailures(analysis, exchanges, traceLogs?.items ?? []), [analysis, exchanges, traceLogs])
+  // This trace next to recent traces of the same operation that didn't fail: replies that look
+  // nothing like the usual ones, and steps that usually run and didn't.
+  const { data: baseline } = useQuery({
+    queryKey: ["trace-baseline", trace.traceId],
+    queryFn: ({ signal }) => getTraceBaseline(trace.traceId, { signal }),
+    retry: false,
+    staleTime: 60_000,
+  })
+  const verdictMutation = useMutation({
+    mutationFn: ({ shapeKey, verdict }: { shapeKey: string; verdict: "failure" | "fine" | null }) => setReplyVerdict(shapeKey, verdict),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["trace-baseline", trace.traceId] }),
+  })
+  const softFailures = useMemo(() => findSoftFailures(analysis, exchanges, traceLogs?.items ?? [], baseline), [analysis, exchanges, traceLogs, baseline])
   const softIds = useMemo(() => new Set(softFailures.keys()), [softFailures])
   const verdict = useMemo(() => buildVerdict(trace, analysis, exchanges, softFailures), [trace, analysis, exchanges, softFailures])
   const journey = useMemo(() => buildJourney(trace, exchanges, verdict), [trace, exchanges, verdict])
@@ -198,6 +210,9 @@ function TraceView({ trace }: { trace: TraceDetailDto }) {
               analysis={analysis}
               exchange={exchanges.get(selected.spanId)}
               soft={softFailureOf(softFailures, exchanges.get(selected.spanId))}
+              comparison={comparisonFor(exchanges.get(selected.spanId), baseline)}
+              onVerdict={(shapeKey, verdict) => verdictMutation.mutate({ shapeKey, verdict })}
+              verdictPending={verdictMutation.isPending}
               tab={tab}
               onTabChange={setTab}
               traceDurationMs={trace.durationMs}

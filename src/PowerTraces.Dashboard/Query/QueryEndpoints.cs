@@ -74,6 +74,24 @@ internal static class QueryEndpoints
             return Results.Ok(trace);
         });
 
+        // The trace next to recent traces of the same operation that didn't fail: steps that
+        // usually run and didn't, and how each recorded reply compares with the usual ones.
+        var baselines = new TraceBaselineService(store);
+        api.MapGet("/traces/{traceId}/baseline", async (string traceId, CancellationToken ct) =>
+            await baselines.GetAsync(traceId, ct) is { } baseline ? Results.Ok(baseline) : Results.NotFound());
+
+        // A person's call on replies of one shape: "failure", "fine", or null to forget it.
+        api.MapPut("/reply-verdicts", async (ReplyVerdictRequest request, CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.ShapeKey) || request.ShapeKey.Length > 1000)
+                return Results.BadRequest("A shape key is required.");
+            if (request.Verdict is not (null or TraceBaselines.FailureVerdict or TraceBaselines.FineVerdict))
+                return Results.BadRequest("Verdict must be 'failure', 'fine' or null.");
+            return await baselines.SetVerdictAsync(request.ShapeKey, request.Verdict, ct)
+                ? Results.NoContent()
+                : Results.Problem("This dashboard provider can't store verdicts.", statusCode: StatusCodes.Status501NotImplemented);
+        });
+
         // Pinning keeps a trace (and its logs) out of retention for good.
         api.MapPut("/traces/{traceId}/pin", async (string traceId, CancellationToken ct) =>
         {

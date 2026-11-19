@@ -7,8 +7,13 @@ namespace PowerTraces.MongoDb;
 /// <summary>Retention for MongoDB: the policy and the last run are JSON values in the Settings
 /// collection, pinned traces have a collection of their own. A sweep finds expired documents
 /// through the StartTime/Timestamp indexes a batch at a time and deletes them by id.</summary>
-public sealed partial class MongoDashboardStore : IRetentionStore
+public sealed partial class MongoDashboardStore : IRetentionStore, IDashboardSettingsStore
 {
+    public async Task<string?> GetSettingAsync(string key, CancellationToken ct) =>
+        (await Settings.Find(Builders<SettingDocument>.Filter.Eq(d => d.Id, key)).FirstOrDefaultAsync(ct).ConfigureAwait(false))?.Value;
+
+    public Task SetSettingAsync(string key, string value, CancellationToken ct) => WriteSettingAsync(key, value, ct);
+
     private const string RetentionSettingsKey = "retention";
     private const string RetentionLastRunKey = "retention.lastRun";
 

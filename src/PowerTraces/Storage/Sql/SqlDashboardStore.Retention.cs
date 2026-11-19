@@ -10,8 +10,13 @@ namespace PowerTraces.Storage.Sql;
 /// <see cref="PowerTracesSchema.PinnedTracesTable"/>. A sweep finds expired rows through the
 /// time indexes a batch at a time and deletes them by id, so it never holds a long transaction
 /// or lock on tables the exporter is writing to.</summary>
-public abstract partial class SqlDashboardStore : IRetentionStore
+public abstract partial class SqlDashboardStore : IRetentionStore, IDashboardSettingsStore
 {
+    public async Task<string?> GetSettingAsync(string key, CancellationToken ct) =>
+        (await ReadSettingAsync(key, ct).ConfigureAwait(false)).Value;
+
+    public Task SetSettingAsync(string key, string value, CancellationToken ct) => WriteSettingAsync(key, value, ct);
+
     private const string RetentionSettingsKey = "retention";
     private const string RetentionLastRunKey = "retention.lastRun";
 

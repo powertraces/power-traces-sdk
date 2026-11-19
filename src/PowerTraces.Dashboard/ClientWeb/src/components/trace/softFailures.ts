@@ -1,4 +1,4 @@
-import type { LogListItem, SpanItem } from "@/lib/api"
+import type { LogListItem, ReplyComparisonDto, SpanItem, TraceBaseline } from "@/lib/api"
 import { formatDuration } from "@/lib/format"
 import { readableMessage, type Exchange } from "./story"
 import { spanExceptions, type TraceAnalysis } from "./traceAnalysis"
@@ -28,31 +28,14 @@ export interface SoftFailure {
   reason: string | null
 }
 
-/** What a phase-3 baseline knows about one call (see `api/traces/{id}/baseline`). */
-export interface ReplyComparison {
-  spanId: string
-  sampleSize: number
-  /** Share of usual successful replies with this reply's shape (0–1). */
-  sameShapeShare: number
-  missing: string[]
-  added: string[]
-  usualBytes: number | null
-  bytes: number | null
-  /** A person's call on this route: "failure" or "fine". */
-  verdict: "failure" | "fine" | null
+/** The comparison of an exchange's recorded reply with the usual ones, if the baseline has it. */
+export function comparisonFor(ex: Exchange | undefined, baseline: TraceBaseline | null | undefined): ReplyComparisonDto | null {
+  if (!ex || !baseline) return null
+  return baseline.replies.find((r) => r.spanId === ex.server?.spanId || r.spanId === ex.client?.spanId) ?? null
 }
 
-export interface MissingStep {
-  name: string
-  serviceName: string | null
-  share: number
-}
-
-export interface BaselineInput {
-  replies: ReplyComparison[]
-  missingSteps: MissingStep[]
-  sampleSize: number
-}
+/** Enough usual replies to say anything about this one's shape. */
+export const MIN_COMPARISON_SAMPLE = 5
 
 /** How soon after a reply a reaction still counts as a reaction to it. */
 const REACTION_WINDOW_MS = 3_000
@@ -79,7 +62,7 @@ export function findSoftFailures(
   analysis: TraceAnalysis,
   exchanges: Map<string, Exchange>,
   logs: LogListItem[],
-  baseline?: BaselineInput | null,
+  baseline?: TraceBaseline | null,
 ): Map<string, SoftFailure> {
   const result = new Map<string, SoftFailure>()
   const unique = [...new Set(exchanges.values())]
@@ -87,6 +70,7 @@ export function findSoftFailures(
 
   for (const ex of unique) {
     if (!isSuccessStatus(ex) || ex.kind === "messaging") continue
+    const cmp = comparisonFor(ex, baseline)
     // The span in the caller that made the call: the client span's parent, or the span above an
     // untraced caller's server span.
     const callSpan = ex.client ?? ex.server!
@@ -164,9 +148,8 @@ export function findSoftFailures(
       })
     } else notSeen.push("No retry of the same request")
 
-    // 4. Compared with this call's usual successful replies (phase-3 baseline).
-    const cmp = baseline?.replies.find((r) => r.spanId === ex.server?.spanId || r.spanId === ex.client?.spanId)
-    if (cmp && cmp.verdict !== "fine") {
+    // 4. Compared with this call's usual successful replies.
+    if (cmp && cmp.sampleSize >= MIN_COMPARISON_SAMPLE) {
       if (cmp.missing.length > 0 && cmp.sameShapeShare < 0.2) {
         const usual = Math.round((1 - cmp.sameShapeShare) * 100)
         signals.push({
@@ -184,13 +167,15 @@ export function findSoftFailures(
           short: "the reply is much smaller than usual",
         })
       }
-      if (cmp.verdict === "failure") {
-        signals.push({ id: "confirmed", strength: "strong", text: "Someone confirmed that replies like this one mean failure.", short: "replies like this were confirmed as failures" })
-      }
+    }
+    if (cmp?.verdict === "failure") {
+      signals.push({ id: "confirmed", strength: "strong", text: "Someone confirmed that replies like this one mean failure.", short: "replies like this were confirmed as failures" })
     }
 
-    if (signals.some((s) => s.strength === "strong")) {
-      reason ??= readableMessage(ex.responseBody?.text)
+    // Someone said replies like this are fine: only the app's own word overrides that.
+    const fine = cmp?.verdict === "fine" && !signals.some((s) => s.id === "caller-marked")
+    if (!fine && signals.some((s) => s.strength === "strong")) {
+      reason ??= readableMessage(ex.responseBody?.text) ?? (cmp ? textInNewFields(ex.responseBody?.text, cmp.added) : null)
       result.set(ex.id, { exchange: ex, signals, notSeen, reason })
     }
   }
@@ -219,3 +204,29 @@ export function primarySoftFailure(soft: Map<string, SoftFailure>): SoftFailure 
 
 export const softFailureOf = (soft: Map<string, SoftFailure>, ex: Exchange | undefined) => (ex ? (soft.get(ex.id) ?? null) : null)
 
+
+/** The most sentence-like text in the reply's fields that the usual replies don't have — where
+ * an unusual reply explains itself, whatever those fields are called. */
+function textInNewFields(body: string | null | undefined, added: string[]): string | null {
+  if (!body) return null
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(body)
+  } catch {
+    return null
+  }
+  const texts = added
+    .filter((p) => p.endsWith(":string"))
+    .map((p) => p.slice(0, -":string".length).split("."))
+    .map((parts) =>
+      parts.reduce<unknown>((value, part) => {
+        if (value == null) return null
+        const key = part.endsWith("[]") ? part.slice(0, -2) : part
+        const next = (value as Record<string, unknown>)[key]
+        return part.endsWith("[]") && Array.isArray(next) ? next[0] : next
+      }, parsed),
+    )
+    .filter((v): v is string => typeof v === "string" && /[a-z]/i.test(v) && v.length <= 240)
+  // Words beat codes: "Balance too low" over "E-1042".
+  return texts.sort((a, b) => Number(/\s/.test(b)) - Number(/\s/.test(a)) || b.length - a.length)[0] ?? null
+}
