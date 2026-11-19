@@ -14,7 +14,7 @@ import { formatAttributeValue, formatDuration, formatTimestamp } from "@/lib/for
 import { useLocalStorageState } from "@/lib/useLocalStorageState"
 import { pageParam, useUrlState } from "@/lib/urlState"
 import { readTimeRange } from "@/lib/timeRange"
-import { decodeFieldFilters, decodeLegacyAttributeFilters, encodeFieldFilter } from "@/lib/traceSearch"
+import { APP_MARKED_FILTER, decodeFieldFilters, decodeLegacyAttributeFilters, encodeFieldFilter, isAppMarkedFilter } from "@/lib/traceSearch"
 import { CopyButton } from "@/components/CopyButton"
 import { SearchBar, type SearchState } from "@/components/search/SearchBar"
 import { TraceFacetPanel } from "@/components/search/TraceFacetPanel"
@@ -91,6 +91,7 @@ export function Traces() {
       endpoint: next.endpoints,
     })
 
+  const appMarked = state.filters.some(isAppMarkedFilter)
   const traceRules = new Set(ignoreRules?.filter((r) => r.kind === "trace").map((r) => r.name) ?? [])
   const showMatch = data?.items.some((t) => t.match) ?? false
   const total = data ? `${data.totalCount.toLocaleString()}${data.totalCountCapped ? "+" : ""}` : "…"
@@ -105,6 +106,10 @@ export function Traces() {
       onEndpoints={(endpoint) => update({ endpoint })}
       errors={errors}
       onErrors={(next) => update({ errors: next === undefined ? null : next ? "1" : "0" })}
+      appMarked={appMarked}
+      onAppMarked={() =>
+        setSearchState({ ...state, filters: appMarked ? state.filters.filter((f) => !isAppMarkedFilter(f)) : [...state.filters, APP_MARKED_FILTER] })
+      }
       services={serviceNames ?? []}
       selectedServices={services}
       onServices={(service) => update({ service })}

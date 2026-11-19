@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from "react"
-import { Archive, CircleAlert, CircleCheck, Clock, Pin } from "lucide-react"
+import { Archive, CircleAlert, CircleCheck, Clock, Pin, TriangleAlert } from "lucide-react"
 import type { RetentionSettings, TraceDetail } from "@/lib/api"
 import { formatDuration, formatRelative, formatTimestamp } from "@/lib/format"
 import { CopyButton } from "@/components/CopyButton"
@@ -33,13 +33,17 @@ export function TraceHeader({
   analysis,
   retention,
   actions,
+  likelyFailed = false,
 }: {
   trace: TraceDetail
   analysis: TraceAnalysis
   retention: RetentionSettings | null
   actions: ReactNode
+  /** Nothing reported an error, but a call that answered "OK" didn't work. */
+  likelyFailed?: boolean
 }) {
   const errorSpans = trace.spans.filter((s) => s.hasError).length
+  const soft = !trace.hasError && likelyFailed
   const criticalTotal = analysis.services.reduce((sum, s) => sum + s.criticalMs, 0)
   const top = analysis.services[0]
   const topShare = top && criticalTotal > 0 ? Math.round((top.criticalMs / criticalTotal) * 100) : null
@@ -66,18 +70,18 @@ export function TraceHeader({
     <header className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-[var(--shadow-sm)]">
       <div className="flex flex-col gap-4 p-5 pb-4">
         <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
-          <div className="flex min-w-0 flex-1 items-start gap-3">
+          <div className="flex min-w-0 flex-[1_1_16rem] items-start gap-3">
             <span
-              className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${trace.hasError ? "bg-[var(--error)]/12 text-[var(--error)]" : "bg-[var(--success)]/12 text-[var(--success)]"}`}
-              title={trace.hasError ? "Failed" : "Succeeded"}
+              className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${trace.hasError ? "bg-[var(--error)]/12 text-[var(--error)]" : soft ? "bg-[var(--warn)]/12 text-[var(--warn)]" : "bg-[var(--success)]/12 text-[var(--success)]"}`}
+              title={trace.hasError ? "Failed" : soft ? "Likely failed" : "Succeeded"}
             >
-              {trace.hasError ? <CircleAlert size={18} aria-label="Failed" /> : <CircleCheck size={18} aria-label="Succeeded" />}
+              {trace.hasError ? <CircleAlert size={18} aria-label="Failed" /> : soft ? <TriangleAlert size={18} aria-label="Likely failed" /> : <CircleCheck size={18} aria-label="Succeeded" />}
             </span>
             <div className="flex min-w-0 flex-col gap-1">
               <h1 className="min-w-0 font-mono text-lg leading-snug font-semibold tracking-tight break-all sm:text-xl">{trace.rootName ?? "(unnamed trace)"}</h1>
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--text-muted)]">
-                <span className={trace.hasError ? "font-medium text-[var(--error)]" : "font-medium text-[var(--success)]"}>
-                  {trace.hasError ? `Failed${errorSpans > 0 ? ` · ${errorSpans} error ${errorSpans === 1 ? "span" : "spans"}` : ""}` : "Succeeded"}
+                <span className={trace.hasError ? "font-medium text-[var(--error)]" : soft ? "font-medium text-[var(--warn)]" : "font-medium text-[var(--success)]"}>
+                  {trace.hasError ? `Failed${errorSpans > 0 ? ` · ${errorSpans} error ${errorSpans === 1 ? "span" : "spans"}` : ""}` : soft ? "Likely failed · every call said OK" : "Succeeded"}
                 </span>
                 <span aria-hidden="true">·</span>
                 <span>{trace.serviceName ?? "—"}</span>

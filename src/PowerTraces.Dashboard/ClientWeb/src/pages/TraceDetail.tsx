@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from "react"
 import { useParams, Link } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Ban, ChevronRight, Pin, PinOff } from "lucide-react"
-import { createIgnoreRule, getIgnoreRules, getRetention, getTrace, pinTrace, unpinTrace, type TraceDetail as TraceDetailDto } from "@/lib/api"
+import { createIgnoreRule, getIgnoreRules, getRetention, getTrace, getTraceBaseline, pinTrace, searchLogs, setReplyVerdict, unpinTrace, type TraceDetail as TraceDetailDto } from "@/lib/api"
 import { EmptyState, Loading } from "@/components/Panel"
 import { Button, Segmented } from "@/components/ui"
 import { CopyButton } from "@/components/CopyButton"
@@ -10,8 +10,11 @@ import { useUrlState } from "@/lib/urlState"
 import { TraceHeader } from "@/components/trace/TraceHeader"
 import { TraceWaterfall } from "@/components/trace/TraceWaterfall"
 import { TraceHotspots } from "@/components/trace/TraceHotspots"
-import { SpanFocus } from "@/components/trace/SpanFocus"
+import { SpanFocus, type SpanTab } from "@/components/trace/SpanFocus"
+import { TraceStory } from "@/components/trace/TraceStory"
+import { buildExchanges, buildJourney, buildVerdict, partnerOf } from "@/components/trace/story"
 import { analyzeTrace, pathToSpan } from "@/components/trace/traceAnalysis"
+import { comparisonFor, findSoftFailures, softFailureOf } from "@/components/trace/softFailures"
 
 type View = "timeline" | "hotspots"
 
@@ -35,18 +38,54 @@ function TraceView({ trace }: { trace: TraceDetailDto }) {
   const { params, update } = useUrlState()
   const view: View = params.get("view") === "hotspots" ? "hotspots" : "timeline"
   const analysis = useMemo(() => analyzeTrace(trace), [trace])
+  const exchanges = useMemo(() => buildExchanges(trace, analysis), [trace, analysis])
+  // The trace's warnings and errors: a caller complaining right after a reply that said "OK" is
+  // evidence the reply wasn't OK.
+  const { data: traceLogs } = useQuery({
+    queryKey: ["trace-warnings", trace.traceId],
+    queryFn: ({ signal }) =>
+      searchLogs(
+        {
+          text: [trace.traceId],
+          severities: [13, 17, 21],
+          from: new Date(new Date(trace.startTime).getTime() - 60_000).toISOString(),
+          to: new Date(new Date(trace.endTime).getTime() + 300_000).toISOString(),
+          pageSize: 200,
+        },
+        { signal },
+      ),
+    retry: false,
+  })
+  // This trace next to recent traces of the same operation that didn't fail: replies that look
+  // nothing like the usual ones, and steps that usually run and didn't.
+  const { data: baseline } = useQuery({
+    queryKey: ["trace-baseline", trace.traceId],
+    queryFn: ({ signal }) => getTraceBaseline(trace.traceId, { signal }),
+    retry: false,
+    staleTime: 60_000,
+  })
+  const verdictMutation = useMutation({
+    mutationFn: ({ shapeKey, verdict }: { shapeKey: string; verdict: "failure" | "fine" | null }) => setReplyVerdict(shapeKey, verdict),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["trace-baseline", trace.traceId] }),
+  })
+  const softFailures = useMemo(() => findSoftFailures(analysis, exchanges, traceLogs?.items ?? [], baseline), [analysis, exchanges, traceLogs, baseline])
+  const softIds = useMemo(() => new Set(softFailures.keys()), [softFailures])
+  const verdict = useMemo(() => buildVerdict(trace, analysis, exchanges, softFailures), [trace, analysis, exchanges, softFailures])
+  const journey = useMemo(() => buildJourney(trace, exchanges, verdict), [trace, exchanges, verdict])
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
+  // Kept while moving between spans, so comparing requests stays on the same tab.
+  const [tab, setTab] = useState<SpanTab>("overview")
   const detailsRef = useRef<HTMLDivElement>(null)
 
   const requested = params.get("span")
   const selected =
     (requested && analysis.spanById.get(requested)) ||
-    // Default to the first failing span — usually the reason anyone opened the trace — else the root.
-    trace.spans
-      .filter((s) => s.hasError && !(analysis.childrenByParent.get(s.spanId) ?? []).some((c) => c.hasError))
-      .sort((a, b) => a.startTime.localeCompare(b.startTime))[0] ||
+    // Default to where things first went wrong — usually the reason anyone opened the trace — else the root.
+    verdict.focus ||
     analysis.roots[0] ||
     trace.spans[0]
+
+  const partner = selected ? partnerOf(selected, exchanges.get(selected.spanId)) : null
 
   const { data: ignoreRules } = useQuery({ queryKey: ["ignore-rules"], queryFn: getIgnoreRules })
   const invalidateRules = () => queryClient.invalidateQueries({ queryKey: ["ignore-rules"] })
@@ -133,7 +172,9 @@ function TraceView({ trace }: { trace: TraceDetailDto }) {
         <span className="truncate font-mono text-[var(--text)]">{trace.traceId.slice(0, 16)}</span>
       </nav>
 
-      <TraceHeader trace={trace} analysis={analysis} retention={retention?.settings ?? null} actions={actions} />
+      <TraceHeader trace={trace} analysis={analysis} retention={retention?.settings ?? null} actions={actions} likelyFailed={verdict.outcome === "soft"} />
+
+      <TraceStory trace={trace} verdict={verdict} journey={journey} onSelectSpan={selectSpan} />
 
       {/* Master–detail: the span tree (or the hotspots) on the left, the selected span on the
           right, pinned in view while the tree scrolls. Stacked below xl. */}
@@ -149,6 +190,9 @@ function TraceView({ trace }: { trace: TraceDetailDto }) {
               collapsed={collapsed}
               onCollapsedChange={setCollapsed}
               toolbarStart={viewSwitch}
+              exchanges={exchanges}
+              partnerSpanId={partner?.spanId ?? null}
+              softIds={softIds}
             />
           ) : (
             <>
@@ -164,6 +208,13 @@ function TraceView({ trace }: { trace: TraceDetailDto }) {
               key={selected.spanId}
               span={selected}
               analysis={analysis}
+              exchange={exchanges.get(selected.spanId)}
+              soft={softFailureOf(softFailures, exchanges.get(selected.spanId))}
+              comparison={comparisonFor(exchanges.get(selected.spanId), baseline)}
+              onVerdict={(shapeKey, verdict) => verdictMutation.mutate({ shapeKey, verdict })}
+              verdictPending={verdictMutation.isPending}
+              tab={tab}
+              onTabChange={setTab}
               traceDurationMs={trace.durationMs}
               ignored={ignoredSpanNames.has(selected.name) || (ignoreSpan.isSuccess && ignoreSpan.variables === selected.name)}
               onIgnore={(name) => ignoreSpan.mutate(name)}

@@ -371,3 +371,32 @@ export type AttributeScope = "traces" | "logs"
 
 export const getAttributeKeys = (scope: AttributeScope, opts?: RequestOptions) =>
   api.get<string[]>(`api/attributes/${scope}`, { signal: opts?.signal }).then((r) => r.data)
+
+/** Mirrors the backend's `ReplyComparisonDto`: one recorded reply next to the same call's usual
+ * successful replies. Paths are `path:type` (`data.id:string`, `errors:empty list`). */
+export interface ReplyComparisonDto {
+  spanId: string
+  shapeKey: string
+  sampleSize: number
+  sameShapeShare: number
+  usual: string[]
+  missing: string[]
+  added: string[]
+  usualBytes: number | null
+  bytes: number | null
+  verdict: "failure" | "fine" | null
+}
+
+/** Mirrors the backend's `TraceBaselineDto`: the trace compared with recent traces of the same
+ * operation that didn't fail. */
+export interface TraceBaseline {
+  sampleSize: number
+  missingSteps: { name: string; serviceName: string | null; share: number }[]
+  replies: ReplyComparisonDto[]
+}
+
+export const getTraceBaseline = (traceId: string, opts?: RequestOptions) =>
+  api.get<TraceBaseline>(`api/traces/${traceId}/baseline`, { signal: opts?.signal }).then((r) => r.data)
+
+/** Records a person's call on replies of one shape (`null` forgets it). */
+export const setReplyVerdict = (shapeKey: string, verdict: "failure" | "fine" | null) => api.put("api/reply-verdicts", { shapeKey, verdict })

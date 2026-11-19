@@ -4,6 +4,7 @@ import clsx from "clsx"
 import type { SpanItem } from "@/lib/api"
 import { formatDuration } from "@/lib/format"
 import { NAME_COLUMN } from "./spanTree"
+import type { Exchange } from "./story"
 import { CatIcon, detectCategory, CAT_STYLES, HttpStatusBadge, KindBadge, getHttpStatusFromSpan, getStatusColor } from "./traceHelpers"
 
 function countDescendants(spanId: string, childrenByParent: Map<string, SpanItem[]>): number {
@@ -25,6 +26,9 @@ export function SpanRow({
   matches,
   collapsed,
   onToggle,
+  exchanges,
+  partnerId,
+  softIds,
 }: {
   span: SpanItem
   childrenByParent: Map<string, SpanItem[]>
@@ -41,6 +45,12 @@ export function SpanRow({
   /** Spans whose subtree is folded away. Ignored while filtering, so every match stays visible. */
   collapsed: Set<string>
   onToggle: (spanId: string) => void
+  /** Calls by span id — both halves of a traced call map to the same exchange. */
+  exchanges: Map<string, Exchange>
+  /** The other half of the selected span's call, highlighted with it. */
+  partnerId: string | null
+  /** Calls (exchange ids) that answered with a success status but didn't work. */
+  softIds: Set<string>
 }) {
   const children = childrenByParent.get(span.spanId) ?? []
   const isCollapsed = !matches && collapsed.has(span.spanId)
@@ -58,6 +68,10 @@ export function SpanRow({
   const barColor = `var(${getStatusColor(span) ?? CAT_STYLES[cat].color})`
   const httpStatus = getHttpStatusFromSpan(span)
   const selected = selectedId === span.spanId
+  const isPartner = partnerId === span.spanId
+  const exchange = exchanges.get(span.spanId)
+  const soft = !!exchange && softIds.has(exchange.id)
+  const pairedRole = exchange?.client && exchange.server ? (exchange.client.spanId === span.spanId ? "sent" : "answer") : null
   const dimmed = matches ? !matches(span) : false
 
   // A span picked elsewhere (the details pane, the hotspots) may be off screen — bring it into
@@ -77,9 +91,9 @@ export function SpanRow({
         aria-expanded={children.length > 0 ? !isCollapsed : undefined}
         aria-level={depth + 1}
         className={`group/spanrow flex cursor-pointer items-stretch border-b border-[var(--border)] border-l-2 transition-colors ${
-          selected ? "bg-[var(--accent)]/[0.06]" : "border-l-transparent hover:bg-[var(--hover)]"
+          selected ? "bg-[var(--accent)]/[0.06]" : isPartner ? "bg-[var(--accent)]/[0.03]" : "border-l-transparent hover:bg-[var(--hover)]"
         } ${dimmed ? "opacity-35" : ""}`}
-        style={selected ? { borderLeftColor: barColor } : undefined}
+        style={selected ? { borderLeftColor: barColor } : isPartner ? { borderLeftColor: barColor, borderLeftStyle: "dashed" } : undefined}
         onClick={() => onSelect(span.spanId)}
       >
         {/* Left: tree + name */}
@@ -131,6 +145,28 @@ export function SpanRow({
           </span>
           {isCollapsed && <span className="shrink-0 rounded bg-[var(--hover-strong)] px-1 text-[10px] text-[var(--text-muted)] tabular-nums">+{countDescendants(span.spanId, childrenByParent)}</span>}
           {ignoredSpanNames.has(span.name) && <span title="This span name is ignored for future exports" className="rounded border border-[var(--warn)]/40 px-1 py-0.5 text-[9px] text-[var(--warn)]">Ignored</span>}
+          {soft && (
+            <span className="h-2 w-2 shrink-0 rotate-45 bg-[var(--warn)]" title="Answered with a success status, but didn't work" aria-label="Said OK, but failed" />
+          )}
+          {pairedRole && (
+            <span
+              title={
+                pairedRole === "sent"
+                  ? `The request ${exchange!.caller ?? "the caller"} sent; ${exchange!.callee}'s side of it is the step below`
+                  : `${exchange!.callee} handling the request from ${exchange!.caller ?? "the caller"}; the sent side is the step above`
+              }
+              className={clsx(
+                "shrink-0 rounded px-1 py-px text-[9px] font-bold tracking-wide",
+                pairedRole === "answer" && exchange!.failed
+                  ? "bg-[var(--error)]/15 text-[var(--error)]"
+                  : soft
+                    ? "bg-[var(--warn)]/15 text-[var(--warn)]"
+                    : "bg-[var(--hover-strong)] text-[var(--text-muted)]",
+              )}
+            >
+              {pairedRole === "sent" ? "SENT" : "ANSWER"}
+            </span>
+          )}
           <HttpStatusBadge status={httpStatus} />
           <KindBadge kind={span.kind} hasError={span.hasError} />
         </div>
@@ -184,6 +220,9 @@ export function SpanRow({
           matches={matches}
           collapsed={collapsed}
           onToggle={onToggle}
+          exchanges={exchanges}
+          partnerId={partnerId}
+          softIds={softIds}
         />
       ))}
     </div>

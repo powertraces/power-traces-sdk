@@ -14,6 +14,8 @@ export function TraceFacetPanel({
   onEndpoints,
   errors,
   onErrors,
+  appMarked,
+  onAppMarked,
   services,
   selectedServices,
   onServices,
@@ -27,6 +29,10 @@ export function TraceFacetPanel({
   onEndpoints: (next: string[]) => void
   errors: boolean | undefined
   onErrors: (next: boolean | undefined) => void
+  /** Only traces where the app marked a step failed (`MarkFailed`) — e.g. a reply that said 200
+   * but meant failure. */
+  appMarked: boolean
+  onAppMarked: () => void
   services: string[]
   selectedServices: string[]
   onServices: (next: string[]) => void
@@ -79,6 +85,7 @@ export function TraceFacetPanel({
       <FacetGroup title="Status">
         <Check label="Error" count={facets?.errorCount} approx={approx} checked={errors === true} onChange={() => onErrors(errors === true ? undefined : true)} dot="var(--error)" />
         <Check label="OK" count={facets?.okCount} approx={approx} checked={errors === false} onChange={() => onErrors(errors === false ? undefined : false)} dot="var(--success)" />
+        <Check label="Marked failed by the app" checked={appMarked} onChange={onAppMarked} dot="var(--warn)" />
       </FacetGroup>
 
       {services.length > 0 && (
